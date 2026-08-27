@@ -1,13 +1,14 @@
 {
   "name": "realtime-platform",
   "private": true,
-  "version": "0.2.0",
-  "packageManager": "npm@10.9.2",
+  "version": "0.4.0",
+  "packageManager": "bun@1.3.4",
   "workspaces": ["packages/*", "tests/react-test"],
   "scripts": {
-    "build": "npm run build --workspace=@realtime/core && npm run build --workspace=@realtime/server && npm run build --workspace=@realtime/client && npm run build --workspace=@realtime/react",
-    "test": "npm run test --workspaces --if-present",
-    "test:react": "npm run dev --workspace=@realtime/react-test",
-    "test:react-server": "node tests/react-test/server.mjs"
+    "build": "bun run --cwd packages/core build && bun run --cwd packages/server build && bun run --cwd packages/client build && bun run --cwd packages/react build",
+    "test": "bun run --workspaces --if-present test",
+    "test:react": "bun run --cwd tests/react-test dev",
+    "test:react-server": "bun tests/react-test/server.mjs",
+    "test:smoke": "bun tests/smoke/v0.1-smoke-test.mjs && bun tests/smoke/v0.2-smoke-test.mjs && bun tests/smoke/v0.3-smoke-test.mjs && bun tests/smoke/v0.4-smoke-test.mjs"
   }
 }

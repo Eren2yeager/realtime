@@ -1,14 +1,18 @@
-# Realtime Platform (v0.2)
+# Realtime Platform (v0.4)
 
 Framework-independent realtime rooms and messaging for browser clients and one Node.js server.
 
-## v0.2 capabilities
+## v0.4 capabilities
 
 - Room-scoped online/offline presence, including a presence snapshot on join
 - Typing start/stop events
 - Automatic restoration of client-joined rooms after a reconnect
 - `message:delivered` events for each connected recipient (transport delivery only)
 - Browser navigation closes a client connection immediately, so presence does not wait for a heartbeat timeout
+- Authenticated, room-authorized WebRTC offer, answer, and ICE-candidate signaling
+- One-to-one browser audio calls, including accept, reject, hangup, ringing timeout, and disconnect handling
+- One-to-one browser video calls and in-call screen sharing
+- Application-provided STUN/TURN (`iceServers`) configuration; media remains peer-to-peer
 
 ## Packages
 
@@ -20,8 +24,8 @@ Framework-independent realtime rooms and messaging for browser clients and one N
 ## Install and build
 
 ```bash
-npm install
-npm run build
+bun install
+bun run build
 ```
 
 Node.js 20 or newer is required. The repository intentionally does not commit dependencies.
@@ -69,8 +73,38 @@ realtime.on("message", (message) => console.log(message));
 realtime.connect();
 ```
 
-The server verifies a `0.1` protocol handshake automatically. A user must join
+The server verifies a `0.4` protocol handshake automatically. A user must join
 a room before sending; message events are transport-only and are never persisted.
+
+## Audio calls
+
+Both users must have joined the same private or otherwise authorized room. The
+server selects the single other user in that room, relays signaling only, and
+never receives the audio stream.
+
+```ts
+const realtime = createRealtimeClient("http://localhost:3001", {
+  iceServers: [
+    { urls: "stun:stun.example.com:3478" },
+    { urls: "turn:turn.example.com:3478", username: "temporary-user", credential: "temporary-secret" }
+  ]
+});
+
+realtime.on("call:incoming", (call) => {
+  // Show a ringing UI, then call realtime.answerAudioCall(call.id).
+});
+realtime.on("call:stream", (call, stream) => {
+  // Attach stream to an <audio> element: audio.srcObject = stream.
+});
+
+const call = await realtime.startVideoCall("private:alice:bob");
+// Later: await realtime.hangupCall(call.id)
+```
+
+During an active call, use `startScreenShare(call.id)` and `stopScreenShare(call.id)`.
+
+`startCall`, `acceptCall`, `sendOffer`, `sendAnswer`, and `sendIceCandidate`
+are also available for applications that manage their own `RTCPeerConnection`.
 
 ## React
 

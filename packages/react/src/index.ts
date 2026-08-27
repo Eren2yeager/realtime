@@ -1,5 +1,5 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { RealtimeClient, type RealtimeClientOptions } from "@realtime/client";
+import { RealtimeClient, type RealtimeCall, type RealtimeClientOptions } from "@realtime/client";
 import type { RealtimeMessage } from "@realtime/core";
 
 const ClientContext = createContext<RealtimeClient | null>(null);
@@ -45,5 +45,43 @@ export function useChat(roomId: string) {
     error,
     sendMessage: (content: string, clientMessageId?: string) => client.sendMessage(roomId, content, clientMessageId),
     setTyping: (isTyping: boolean) => client.setTyping(roomId, isTyping)
+  };
+}
+
+/** React binding for browser audio/video calls and display sharing. */
+export function useCall() {
+  const client = useRealtime();
+  const [calls, setCalls] = useState<RealtimeCall[]>([]);
+  const [error, setError] = useState<Error | null>(null);
+  useEffect(() => {
+    const record = (call: RealtimeCall) => setCalls((current) => call.state === "ended"
+      ? current.filter((item) => item.id !== call.id)
+      : [...current.filter((item) => item.id !== call.id), call]);
+    const remove = (call: RealtimeCall) => setCalls((current) => current.filter((item) => item.id !== call.id));
+    const unsubscribeIncoming = client.on("call:incoming", record);
+    const unsubscribeAccepted = client.on("call:accepted", record);
+    const unsubscribeState = client.on("call:state", record);
+    const unsubscribeEnded = client.on("call:ended", remove);
+    return () => { unsubscribeIncoming(); unsubscribeAccepted(); unsubscribeState(); unsubscribeEnded(); };
+  }, [client]);
+  const capture = async <T,>(operation: () => Promise<T>): Promise<T> => {
+    try { setError(null); return await operation(); }
+    catch (reason) {
+      const next = reason instanceof Error ? reason : new Error("Call operation failed.");
+      setError(next);
+      throw next;
+    }
+  };
+  return {
+    calls,
+    error,
+    startAudioCall: (roomId: string) => capture(() => client.startAudioCall(roomId)),
+    startVideoCall: (roomId: string) => capture(() => client.startVideoCall(roomId)),
+    answerAudioCall: (callId: string) => capture(() => client.answerAudioCall(callId)),
+    answerVideoCall: (callId: string) => capture(() => client.answerVideoCall(callId)),
+    startScreenShare: (callId: string) => capture(() => client.startScreenShare(callId)),
+    stopScreenShare: (callId: string) => capture(() => client.stopScreenShare(callId)),
+    rejectCall: (callId: string) => capture(() => client.rejectCall(callId)),
+    hangupCall: (callId: string) => capture(() => client.hangupCall(callId))
   };
 }

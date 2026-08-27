@@ -28,15 +28,19 @@ sendMessage("Hello!");
 
 ```js
 const {
-  call,
-  answer,
-  reject,
-  hangup,
-  remoteStream
+  calls,
+  startAudioCall,
+  answerAudioCall,
+  rejectCall,
+  hangupCall
 } = useCall();
 
-call(userId);
+startAudioCall("private:alice:bob");
 ```
+
+Calls are room-scoped: the room must contain exactly one other user. Each call
+entry exposes its lifecycle state and local/remote `MediaStream` values when
+available.
 
 ### Screen Sharing
 
@@ -170,7 +174,7 @@ The CLI should generate configuration and integration code rather than hiding th
 
 ## 6. Initial MVP
 
-### Version 0.1
+### Version 0.1 — Complete
 
 Focus only on:
 
@@ -191,7 +195,7 @@ Room joins and room-scoped actions are authorized by an application-provided
 server callback. Direct messages use private, deterministic room IDs rather
 than a dedicated direct-message subsystem.
 
-### Version 0.2
+### Version 0.2 — Complete
 
 Add:
 
@@ -200,27 +204,27 @@ Add:
 - Reconnection
 - Message delivery events
 
-### Version 0.3
+### Version 0.3 — Complete
 
-Add:
+Delivered:
 
 - WebRTC signaling
 - One-to-one audio calls
-- STUN configuration
+- Configurable STUN/TURN ICE servers on the browser client
 
-The calling API should provide high-level operations such as `call`, `answer`,
-and `hangup`, while retaining a narrowly scoped, transport-agnostic advanced
-signaling interface. A production-ready calling release requires a defined
-call-session state machine, cancellation and timeout behavior, and a TURN
-credential strategy.
+The calling API provides `startAudioCall`, `answerAudioCall`, `rejectCall`,
+and `hangupCall`, with `startCall`, `acceptCall`, and signaling methods for
+advanced integrations. Calls ring for 30 seconds by default (configurable on
+the server), and end when a participant disconnects or leaves the room. TURN
+credential issuance remains the host application's responsibility.
 
-### Version 0.4
+### Version 0.4 — Complete
 
-Add:
+Delivered:
 
-- Video calls
-- Screen sharing
-- TURN configuration
+- One-to-one browser video calls
+- In-call screen sharing with WebRTC renegotiation
+- Application-provided STUN/TURN ICE configuration (introduced in v0.3 and retained)
 
 ### Version 0.5
 

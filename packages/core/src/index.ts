@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = "0.2";
+export const PROTOCOL_VERSION = "0.4";
 
 export type Metadata = Record<string, unknown>;
 
@@ -7,7 +7,7 @@ export type AuthenticatedUser = {
   metadata?: Metadata;
 };
 
-export type RoomAction = "join" | "send-message" | "typing";
+export type RoomAction = "join" | "send-message" | "typing" | "call" | "webrtc";
 
 export type JoinRoomInput = { roomId: string };
 export type SendMessageInput = { roomId: string; content: string; clientMessageId?: string };
@@ -31,11 +31,42 @@ export type MessageDeliveredEvent = {
   deliveredAt: string;
 };
 
+export type IceServer = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+};
+
+export type CallMediaType = "audio" | "video";
+export type CallStartInput = { roomId: string; mediaType?: CallMediaType };
+export type CallResponseInput = { callId: string };
+export type CallHangupInput = { callId: string };
+export type CallIncomingEvent = { callId: string; roomId: string; callerId: string; mediaType: CallMediaType };
+export type CallAcceptedEvent = { callId: string; roomId: string; recipientId: string; mediaType: CallMediaType };
+export type CallRejectedEvent = { callId: string; roomId: string; recipientId: string };
+export type CallEndReason = "hangup" | "rejected" | "timeout" | "disconnected" | "room-left";
+export type CallEndedEvent = { callId: string; roomId: string; endedById?: string; reason: CallEndReason };
+
+export type WebRtcSessionDescription = { type: "offer" | "answer"; sdp: string };
+export type WebRtcIceCandidate = {
+  candidate: string;
+  sdpMid?: string | null;
+  sdpMLineIndex?: number | null;
+  usernameFragment?: string | null;
+};
+export type WebRtcDescriptionInput = { callId: string; description: WebRtcSessionDescription };
+export type WebRtcIceCandidateInput = { callId: string; candidate: WebRtcIceCandidate };
+export type WebRtcDescriptionEvent = { callId: string; roomId: string; senderId: string; description: WebRtcSessionDescription };
+export type WebRtcIceCandidateEvent = { callId: string; roomId: string; senderId: string; candidate: WebRtcIceCandidate };
+
 export type RealtimeErrorCode =
   | "AUTHENTICATION_FAILED"
   | "UNAUTHORIZED"
   | "INVALID_PAYLOAD"
   | "NOT_IN_ROOM"
+  | "CALL_NOT_FOUND"
+  | "CALL_INVALID_STATE"
+  | "CALL_UNAVAILABLE"
   | "PROTOCOL_MISMATCH"
   | "INTERNAL_ERROR";
 
@@ -48,6 +79,13 @@ export type ClientToServerEvents = {
   "room:leave": (input: JoinRoomInput, ack: (result: Result<{ roomId: string }>) => void) => void;
   "message:send": (input: SendMessageInput, ack: (result: Result<RealtimeMessage>) => void) => void;
   "typing:set": (input: TypingInput, ack: (result: Result<{ roomId: string; isTyping: boolean }>) => void) => void;
+  "call:start": (input: CallStartInput, ack: (result: Result<{ callId: string; roomId: string; recipientId: string }>) => void) => void;
+  "call:accept": (input: CallResponseInput, ack: (result: Result<{ callId: string }>) => void) => void;
+  "call:reject": (input: CallResponseInput, ack: (result: Result<{ callId: string }>) => void) => void;
+  "call:hangup": (input: CallHangupInput, ack: (result: Result<{ callId: string }>) => void) => void;
+  "webrtc:offer": (input: WebRtcDescriptionInput, ack: (result: Result<{ callId: string }>) => void) => void;
+  "webrtc:answer": (input: WebRtcDescriptionInput, ack: (result: Result<{ callId: string }>) => void) => void;
+  "webrtc:ice-candidate": (input: WebRtcIceCandidateInput, ack: (result: Result<{ callId: string }>) => void) => void;
 };
 
 export type ServerToClientEvents = {
@@ -60,6 +98,13 @@ export type ServerToClientEvents = {
   "typing:stop": (payload: TypingEvent) => void;
   message: (message: RealtimeMessage) => void;
   "message:delivered": (payload: MessageDeliveredEvent) => void;
+  "call:incoming": (payload: CallIncomingEvent) => void;
+  "call:accepted": (payload: CallAcceptedEvent) => void;
+  "call:rejected": (payload: CallRejectedEvent) => void;
+  "call:ended": (payload: CallEndedEvent) => void;
+  "webrtc:offer": (payload: WebRtcDescriptionEvent) => void;
+  "webrtc:answer": (payload: WebRtcDescriptionEvent) => void;
+  "webrtc:ice-candidate": (payload: WebRtcIceCandidateEvent) => void;
   error: (error: RealtimeError) => void;
 };
 
