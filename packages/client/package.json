@@ -1,0 +1,12 @@
+{
+  "name": "@realtime/client",
+  "version": "0.2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist"],
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "dependencies": { "@realtime/core": "0.2.0", "socket.io-client": "^4.8.1" },
+  "devDependencies": { "typescript": "^5.7.3" }
+}

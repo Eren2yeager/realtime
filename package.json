@@ -1,0 +1,13 @@
+{
+  "name": "realtime-platform",
+  "private": true,
+  "version": "0.2.0",
+  "packageManager": "npm@10.9.2",
+  "workspaces": ["packages/*", "tests/react-test"],
+  "scripts": {
+    "build": "npm run build --workspace=@realtime/core && npm run build --workspace=@realtime/server && npm run build --workspace=@realtime/client && npm run build --workspace=@realtime/react",
+    "test": "npm run test --workspaces --if-present",
+    "test:react": "npm run dev --workspace=@realtime/react-test",
+    "test:react-server": "node tests/react-test/server.mjs"
+  }
+}
