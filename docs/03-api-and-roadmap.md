@@ -226,11 +226,11 @@ Delivered:
 - In-call screen sharing with WebRTC renegotiation
 - Application-provided STUN/TURN ICE configuration (introduced in v0.3 and retained)
 
-### Version 0.5
+### Version 0.5 – In Progress
 
 Add:
 
-- Express adapter
+- Express adapter – complete, pending verification
 - Next.js integration
 - CLI initialization
 

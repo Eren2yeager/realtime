@@ -20,6 +20,7 @@ Framework-independent realtime rooms and messaging for browser clients and one N
 - `@realtime/server` – Socket.IO server with authentication and room authorization hooks
 - `@realtime/client` – browser client SDK
 - `@realtime/react` – thin React bindings over the client SDK
+- `@realtime/express` – Express HTTP server adapter
 
 ## Install and build
 
@@ -55,6 +56,25 @@ await realtime.start();
 
 To use an existing Node HTTP server, call `realtime.attach(httpServer)` before
 the HTTP server begins listening.
+
+## Express
+
+The Express adapter creates one HTTP server for both the Express application
+and realtime transport. Express remains a peer dependency.
+
+```ts
+import express from "express";
+import { createExpressRealtime } from "@realtime/express";
+
+const app = express();
+app.get("/health", (_request, response) => response.json({ ok: true }));
+const server = createExpressRealtime(app, {
+  port: 3001,
+  authenticate: (request) => ({ userId: authenticateRequest(request) }),
+  authorizeRoom: ({ user, roomId }) => canAccessRoom(user.userId, roomId)
+});
+await server.start();
+```
 
 ## Browser client
 

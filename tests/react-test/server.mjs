@@ -1,6 +1,10 @@
-import { createRealtimeServer } from "@realtime/server";
+import express from "express";
+import { createExpressRealtime } from "@realtime/express";
 
-const realtime = createRealtimeServer({
+const app = express();
+app.get("/health", (_request, response) => response.json({ ok: true }));
+
+const server = createExpressRealtime(app, {
   port: 3001,
   cors: { origin: "http://localhost:5173" },
   authenticate(request) {
@@ -13,11 +17,11 @@ const realtime = createRealtimeServer({
   authorizeRoom: () => true
 });
 
-await realtime.start();
+await server.start();
 console.log("Realtime test server listening at http://localhost:3001");
 
 const stop = async () => {
-  await realtime.close();
+  await server.close();
   process.exit(0);
 };
 process.once("SIGINT", stop);

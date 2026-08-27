@@ -1,6 +1,7 @@
 # React browser test (v0.4)
 
-This is a local-only browser integration test for the v0.4 packages. It uses
+This is a local-only browser integration test for the v0.4 packages and runs
+the realtime server through the `@realtime/express` adapter. It uses
 query-string identities and permissive room access solely to make testing easy.
 
 For TURN testing, copy `.env.example` to `.env.local` and set

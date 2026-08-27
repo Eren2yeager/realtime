@@ -5,10 +5,17 @@
   "packageManager": "bun@1.3.4",
   "workspaces": ["packages/*", "tests/react-test"],
   "scripts": {
-    "build": "bun run --cwd packages/core build && bun run --cwd packages/server build && bun run --cwd packages/client build && bun run --cwd packages/react build",
+    "build": "bun run --cwd packages/core build && bun run --cwd packages/server build && bun run --cwd packages/client build && bun run --cwd packages/react build && bun run --cwd packages/express build",
     "test": "bun run --workspaces --if-present test",
     "test:react": "bun run --cwd tests/react-test dev",
     "test:react-server": "bun tests/react-test/server.mjs",
-    "test:smoke": "bun tests/smoke/v0.1-smoke-test.mjs && bun tests/smoke/v0.2-smoke-test.mjs && bun tests/smoke/v0.3-smoke-test.mjs && bun tests/smoke/v0.4-smoke-test.mjs"
+    "test:smoke": "bun tests/smoke/v0.1-smoke-test.mjs && bun tests/smoke/v0.2-smoke-test.mjs && bun tests/smoke/v0.3-smoke-test.mjs && bun tests/smoke/v0.4-smoke-test.mjs && bun tests/smoke/v0.5-express-smoke-test.mjs"
+  },
+  "devDependencies": {
+    "@realtime/client": "workspace:*",
+    "@realtime/core": "workspace:*",
+    "@realtime/express": "workspace:*",
+    "@realtime/react": "workspace:*",
+    "@realtime/server": "workspace:*"
   }
 }
