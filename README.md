@@ -1,6 +1,6 @@
 ## In Development
 
-# Realtime Platform (v0.4)
+# Realtime Platform (v0.5)
 
 Framework-independent realtime rooms and messaging for browser clients and one Node.js server.
 
@@ -23,6 +23,7 @@ Framework-independent realtime rooms and messaging for browser clients and one N
 - `@realtime/client` – browser client SDK
 - `@realtime/react` – thin React bindings over the client SDK
 - `@realtime/express` – Express HTTP server adapter
+- `@realtime/next` – Next.js custom HTTP server adapter
 
 ## Install and build
 
@@ -127,6 +128,7 @@ During an active call, use `startScreenShare(call.id)` and `stopScreenShare(call
 
 `startCall`, `acceptCall`, `sendOffer`, `sendAnswer`, and `sendIceCandidate`
 are also available for applications that manage their own `RTCPeerConnection`.
+
 
 ## React
 

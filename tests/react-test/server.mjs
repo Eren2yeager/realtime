@@ -5,7 +5,7 @@ const app = express();
 app.get("/health", (_request, response) => response.json({ ok: true }));
 
 const server = createExpressRealtime(app, {
-  port: 3001,
+  port: 3000,
   cors: { origin: "http://localhost:5173" },
   authenticate(request) {
     // Test-only identity. Production code must verify a session or token.
@@ -18,7 +18,7 @@ const server = createExpressRealtime(app, {
 });
 
 await server.start();
-console.log("Realtime test server listening at http://localhost:3001");
+console.log("Realtime test server listening at http://localhost:3000");
 
 const stop = async () => {
   await server.close();

@@ -30,6 +30,7 @@ const waitFor = (client, event) =>
     });
   });
 
+let exitCode = 0;
 try {
   await server.start();
 
@@ -55,9 +56,14 @@ try {
   assert.equal(message.senderId, "alice");
   assert.equal(message.content, "Hello Bob!");
 
-  console.log("✅ Smoke test passed:", message);
+  console.log("✅ v0.1 smoke test passed: messaging");
   alice.disconnect();
   bob.disconnect();
+} catch (error) {
+  console.error(error);
+  exitCode = 1;
 } finally {
   await server.close();
 }
+
+process.exit(exitCode);

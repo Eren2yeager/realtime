@@ -80,7 +80,16 @@ export class RealtimeServer {
   async close(): Promise<void> {
     for (const call of this.calls.values()) clearTimeout(call.timeout);
     this.calls.clear();
-    await new Promise<void>((resolve) => this.io.close(() => resolve()));
+    // Forcibly close every client connection at the engine.io layer first; without
+    // this the HTTP server can hold polling sockets open indefinitely while
+    // waiting for graceful disconnects.
+    this.io.disconnectSockets(true);
+    // Close engine.io's internal state immediately so it does not block shutdown.
+    this.io.engine.close();
+    if (this.httpServer && this.httpServer.listening) {
+      this.httpServer.closeAllConnections?.();
+      await new Promise<void>((resolve) => this.httpServer!.close(() => resolve()));
+    }
     this.httpServer = undefined;
   }
 

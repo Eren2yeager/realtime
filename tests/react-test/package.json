@@ -1,7 +1,7 @@
 {
   "name": "@realtime/react-test",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,8 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@realtime/express": "0.4.0",
-    "@realtime/react": "0.4.0",
+    "@realtime/express": "0.5.0",
+    "@realtime/react": "0.5.0",
     "express": "^5.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

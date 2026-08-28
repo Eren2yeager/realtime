@@ -21,6 +21,7 @@ const waitFor = (client, event, matches = () => true) => new Promise((resolve, r
   });
 });
 
+let exitCode = 0;
 try {
   await server.start();
   const alice = createRealtimeClient("http://localhost:3004?userId=alice");
@@ -48,7 +49,12 @@ try {
   await alice.hangupCall(call.id);
   alice.disconnect();
   bob.disconnect();
-  console.log("v0.4 smoke test passed: video call contracts and renegotiation signaling work.");
+  console.log("✅ v0.4 smoke test passed: video call contracts and renegotiation signaling work.");
+} catch (error) {
+  console.error(error);
+  exitCode = 1;
 } finally {
   await server.close();
 }
+
+process.exit(exitCode);

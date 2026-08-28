@@ -22,6 +22,7 @@ const waitFor = (client, event, matches = () => true) => new Promise((resolve, r
   });
 });
 
+let exitCode = 0;
 try {
   await server.start();
   const alice = createRealtimeClient("http://localhost:3003?userId=alice");
@@ -56,9 +57,14 @@ try {
   const ended = waitFor(alice, "call:ended", (call) => call.id === started.id);
   await bob.hangupCall(started.id);
   assert.equal((await ended).state, "ended");
-  console.log("v0.3 smoke test passed: call lifecycle and authenticated WebRTC signaling work.");
+  console.log("✅ v0.3 smoke test passed: call lifecycle and authenticated WebRTC signaling work.");
   alice.disconnect();
   bob.disconnect();
+} catch (error) {
+  console.error(error);
+  exitCode = 1;
 } finally {
   await server.close();
 }
+
+process.exit(exitCode);

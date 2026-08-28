@@ -31,7 +31,7 @@ try {
   console.log(iceServers)
   root.render(
     <StrictMode>
-      <RealtimeProvider url="http://localhost:3001" options={{ query: { userId }, iceServers }}>
+      <RealtimeProvider url="http://localhost:3000" options={{ query: { userId }, iceServers }}>
         <Chat userId={userId} initialCallWith={initialCallWith} />
       </RealtimeProvider>
     </StrictMode>

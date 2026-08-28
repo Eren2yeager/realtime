@@ -1,5 +1,5 @@
 {
-  "name": "@realtime/express",
+  "name": "@realtime/next",
   "version": "0.5.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -8,6 +8,6 @@
   "files": ["dist"],
   "scripts": { "build": "tsc -p tsconfig.json" },
   "dependencies": { "@realtime/server": "0.5.0" },
-  "peerDependencies": { "express": ">=4.18.0" },
+  "peerDependencies": { "next": ">=13.0.0" },
   "devDependencies": { "@types/node": "^22.10.5", "typescript": "^5.7.3" }
 }

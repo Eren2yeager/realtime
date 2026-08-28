@@ -34,6 +34,7 @@ const mustNotReceive = (client, event, matches = () => true) => new Promise((res
   setTimeout(() => { unsubscribe(); resolve(); }, 300);
 });
 
+let exitCode = 0;
 try {
   await server.start();
   const alice = createRealtimeClient("http://localhost:3001?userId=alice");
@@ -88,6 +89,11 @@ try {
   console.log("✅ v0.2 smoke test passed: presence, typing, delivery, and reconnection work.");
   alice.disconnect();
   bob.disconnect();
+} catch (error) {
+  console.error(error);
+  exitCode = 1;
 } finally {
   await server.close();
 }
+
+process.exit(exitCode);
