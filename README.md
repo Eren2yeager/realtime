@@ -1,8 +1,16 @@
-## In Development
+## Public Preview
 
 # Realtime Platform (v0.5)
 
 Framework-independent realtime rooms and messaging for browser clients and one Node.js server.
+
+[![npm (scoped)](https://img.shields.io/npm/v/@realtimesdk/core?label=%40realtimesdk%2Fcore)](https://www.npmjs.com/package/@realtimesdk/core)
+[![npm (scoped)](https://img.shields.io/npm/v/@realtimesdk/server?label=%40realtimesdk%2Fserver)](https://www.npmjs.com/package/@realtimesdk/server)
+[![npm (scoped)](https://img.shields.io/npm/v/@realtimesdk/client?label=%40realtimesdk%2Fclient)](https://www.npmjs.com/package/@realtimesdk/client)
+[![npm (scoped)](https://img.shields.io/npm/v/@realtimesdk/react?label=%40realtimesdk%2Freact)](https://www.npmjs.com/package/@realtimesdk/react)
+[![npm (scoped)](https://img.shields.io/npm/v/@realtimesdk/express?label=%40realtimesdk%2Fexpress)](https://www.npmjs.com/package/@realtimesdk/express)
+[![npm (scoped)](https://img.shields.io/npm/v/@realtimesdk/next?label=%40realtimesdk%2Fnext)](https://www.npmjs.com/package/@realtimesdk/next)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 ## v0.4 capabilities
 
@@ -18,12 +26,12 @@ Framework-independent realtime rooms and messaging for browser clients and one N
 
 ## Packages
 
-- `@realtime/core` – protocol contracts and shared helpers
-- `@realtime/server` – Socket.IO server with authentication and room authorization hooks
-- `@realtime/client` – browser client SDK
-- `@realtime/react` – thin React bindings over the client SDK
-- `@realtime/express` – Express HTTP server adapter
-- `@realtime/next` – Next.js custom HTTP server adapter
+- `@realtimesdk/core` – protocol contracts and shared helpers
+- `@realtimesdk/server` – Socket.IO server with authentication and room authorization hooks
+- `@realtimesdk/client` – browser client SDK
+- `@realtimesdk/react` – thin React bindings over the client SDK
+- `@realtimesdk/express` – Express HTTP server adapter
+- `@realtimesdk/next` – Next.js custom HTTP server adapter
 
 ## Install and build
 
@@ -40,7 +48,7 @@ Authentication and room authorization stay in the host application. The server
 does not store messages or impose a data model.
 
 ```ts
-import { createRealtimeServer } from "@realtime/server";
+import { createRealtimeServer } from "@realtimesdk/server";
 
 const realtime = createRealtimeServer({
   port: 3001,
@@ -67,7 +75,7 @@ and realtime transport. Express remains a peer dependency.
 
 ```ts
 import express from "express";
-import { createExpressRealtime } from "@realtime/express";
+import { createExpressRealtime } from "@realtimesdk/express";
 
 const app = express();
 app.get("/health", (_request, response) => response.json({ ok: true }));
@@ -82,7 +90,7 @@ await server.start();
 ## Browser client
 
 ```ts
-import { createRealtimeClient } from "@realtime/client";
+import { createRealtimeClient } from "@realtimesdk/client";
 
 const realtime = createRealtimeClient("http://localhost:3001", {
   auth: { token: "application-token" }
@@ -96,7 +104,7 @@ realtime.on("message", (message) => console.log(message));
 realtime.connect();
 ```
 
-The server verifies a `0.4` protocol handshake automatically. A user must join
+The server verifies a `0.5` protocol handshake automatically. A user must join
 a room before sending; message events are transport-only and are never persisted.
 
 ## Audio calls
@@ -133,7 +141,7 @@ are also available for applications that manage their own `RTCPeerConnection`.
 ## React
 
 ```tsx
-import { RealtimeProvider, useChat } from "@realtime/react";
+import { RealtimeProvider, useChat } from "@realtimesdk/react";
 
 function Chat() {
   const { messages, sendMessage } = useChat("lobby");
@@ -144,3 +152,27 @@ export function App() {
   return <RealtimeProvider url="http://localhost:3001"><Chat /></RealtimeProvider>;
 }
 ```
+
+## Testing
+
+Two test layers:
+
+- **In-workspace smoke tests** — run against the local `dist/` after `bun run build`. Useful as a regression check after editing sources.
+
+  ```bash
+  bun install
+  bun run build
+  bun run test:smoke
+  ```
+
+  Runs `tests/smoke/v0.1-*` through `tests/smoke/v0.5-*` (messaging, presence, typing, calls, video, Express adapter, Next.js adapter).
+
+- **Public-registry smoke test** — installs the packages from npmjs.org into `tests/smoke/public-registry/` and exercises them end-to-end. Use this to verify a freshly published release without workspace resolution.
+
+  ```bash
+  bun run test:smoke:public
+  ```
+
+## License
+
+[MIT](./LICENSE)

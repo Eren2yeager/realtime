@@ -1,13 +1,31 @@
 {
-  "name": "@realtime/react",
+  "name": "@realtimesdk/react",
   "version": "0.5.0",
+  "description": "Thin React bindings over the realtimesdk browser client SDK.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist"],
-  "scripts": { "build": "tsc -p tsconfig.json" },
-  "dependencies": { "@realtime/client": "0.5.0", "@realtime/core": "0.5.0" },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "scripts": { "build": "tsc -p tsconfig.json", "prepublishOnly": "bun run build" },
+  "keywords": ["realtime", "react", "chat", "webrtc", "hooks", "sdk"],
+  "license": "MIT",
+  "author": "Eren2yeager",
+  "homepage": "https://github.com/Eren2yeager/realtime#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eren2yeager/realtime.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Eren2yeager/realtime/issues"
+  },
+  "engines": { "node": ">=20" },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "dependencies": { "@realtimesdk/client": "^0.5.0", "@realtimesdk/core": "^0.5.0" },
   "peerDependencies": { "react": "^18.0.0 || ^19.0.0" },
   "devDependencies": { "@types/react": "^19.0.3", "typescript": "^5.7.3" }
 }

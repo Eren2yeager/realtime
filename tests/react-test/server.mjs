@@ -1,5 +1,5 @@
 import express from "express";
-import { createExpressRealtime } from "@realtime/express";
+import { createExpressRealtime } from "@realtimesdk/express";
 
 const app = express();
 app.get("/health", (_request, response) => response.json({ ok: true }));

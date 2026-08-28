@@ -19,7 +19,7 @@ import {
   type WebRtcIceCandidateEvent,
   type WebRtcDescriptionEvent,
   type WebRtcSessionDescription
-} from "@realtime/core";
+} from "@realtimesdk/core";
 
 type ClientEvents = {
   connected: () => void;

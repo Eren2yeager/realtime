@@ -1,11 +1,29 @@
 {
-  "name": "@realtime/core",
+  "name": "@realtimesdk/core",
   "version": "0.5.0",
+  "description": "Shared protocol contracts, event types, and helpers for the realtimesdk platform.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist"],
-  "scripts": { "build": "tsc -p tsconfig.json" },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "scripts": { "build": "tsc -p tsconfig.json", "prepublishOnly": "bun run build" },
+  "keywords": ["realtime", "websocket", "chat", "webrtc", "protocol", "sdk"],
+  "license": "MIT",
+  "author": "Eren2yeager",
+  "homepage": "https://github.com/Eren2yeager/realtime#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eren2yeager/realtime.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Eren2yeager/realtime/issues"
+  },
+  "engines": { "node": ">=20" },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "devDependencies": { "typescript": "^5.7.3" }
 }

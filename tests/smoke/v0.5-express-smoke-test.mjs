@@ -1,5 +1,5 @@
-import { createExpressRealtime } from "@realtime/express";
-import { createRealtimeClient } from "@realtime/client";
+import { createExpressRealtime } from "@realtimesdk/express";
+import { createRealtimeClient } from "@realtimesdk/client";
 
 const app = (request, response) => {
   if (request.url === "/health") {

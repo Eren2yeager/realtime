@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { createRealtimeServer } from "@realtime/server";
-import { createRealtimeClient } from "@realtime/client";
+import { createRealtimeServer } from "@realtimesdk/server";
+import { createRealtimeClient } from "@realtimesdk/client";
 
 const server = createRealtimeServer({
   port: 3003,

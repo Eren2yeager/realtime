@@ -1,13 +1,31 @@
 {
-  "name": "@realtime/next",
+  "name": "@realtimesdk/next",
   "version": "0.5.0",
+  "description": "Next.js custom HTTP server adapter that hosts the realtimesdk transport during Next.js server lifecycle.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist"],
-  "scripts": { "build": "tsc -p tsconfig.json" },
-  "dependencies": { "@realtime/server": "0.5.0" },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "scripts": { "build": "tsc -p tsconfig.json", "prepublishOnly": "bun run build" },
+  "keywords": ["realtime", "nextjs", "socket.io", "chat", "webrtc", "sdk"],
+  "license": "MIT",
+  "author": "Eren2yeager",
+  "homepage": "https://github.com/Eren2yeager/realtime#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eren2yeager/realtime.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Eren2yeager/realtime/issues"
+  },
+  "engines": { "node": ">=20" },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "dependencies": { "@realtimesdk/server": "^0.5.0" },
   "peerDependencies": { "next": ">=13.0.0" },
   "devDependencies": { "@types/node": "^22.10.5", "typescript": "^5.7.3" }
 }

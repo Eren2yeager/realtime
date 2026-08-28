@@ -1,6 +1,6 @@
 import next from "next";
 import { fileURLToPath } from "node:url";
-import { createNextRealtime } from "@realtime/next";
+import { createNextRealtime } from "@realtimesdk/next";
 
 const projectDir = fileURLToPath(new URL(".", import.meta.url));
 const nextApp = next({ dev: true, dir: projectDir });

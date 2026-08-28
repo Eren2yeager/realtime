@@ -1,6 +1,6 @@
 import { createContext, createElement, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { RealtimeClient, type RealtimeCall, type RealtimeClientOptions } from "@realtime/client";
-import type { RealtimeMessage } from "@realtime/core";
+import { RealtimeClient, type RealtimeCall, type RealtimeClientOptions } from "@realtimesdk/client";
+import type { RealtimeMessage } from "@realtimesdk/core";
 
 const ClientContext = createContext<RealtimeClient | null>(null);
 

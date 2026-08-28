@@ -5,19 +5,19 @@
     "": {
       "name": "realtime-platform",
       "devDependencies": {
-        "@realtime/client": "workspace:*",
-        "@realtime/core": "workspace:*",
-        "@realtime/express": "workspace:*",
-        "@realtime/next": "workspace:*",
-        "@realtime/react": "workspace:*",
-        "@realtime/server": "workspace:*",
+        "@realtimesdk/client": "workspace:*",
+        "@realtimesdk/core": "workspace:*",
+        "@realtimesdk/express": "workspace:*",
+        "@realtimesdk/next": "workspace:*",
+        "@realtimesdk/react": "workspace:*",
+        "@realtimesdk/server": "workspace:*",
       },
     },
     "packages/client": {
-      "name": "@realtime/client",
+      "name": "@realtimesdk/client",
       "version": "0.5.0",
       "dependencies": {
-        "@realtime/core": "0.5.0",
+        "@realtimesdk/core": "^0.5.0",
         "socket.io-client": "^4.8.1",
       },
       "devDependencies": {
@@ -25,17 +25,17 @@
       },
     },
     "packages/core": {
-      "name": "@realtime/core",
+      "name": "@realtimesdk/core",
       "version": "0.5.0",
       "devDependencies": {
         "typescript": "^5.7.3",
       },
     },
     "packages/express": {
-      "name": "@realtime/express",
+      "name": "@realtimesdk/express",
       "version": "0.5.0",
       "dependencies": {
-        "@realtime/server": "0.5.0",
+        "@realtimesdk/server": "^0.5.0",
       },
       "devDependencies": {
         "@types/node": "^22.10.5",
@@ -46,10 +46,10 @@
       },
     },
     "packages/next": {
-      "name": "@realtime/next",
+      "name": "@realtimesdk/next",
       "version": "0.5.0",
       "dependencies": {
-        "@realtime/server": "0.5.0",
+        "@realtimesdk/server": "^0.5.0",
       },
       "devDependencies": {
         "@types/node": "^22.10.5",
@@ -60,11 +60,11 @@
       },
     },
     "packages/react": {
-      "name": "@realtime/react",
+      "name": "@realtimesdk/react",
       "version": "0.5.0",
       "dependencies": {
-        "@realtime/client": "0.5.0",
-        "@realtime/core": "0.5.0",
+        "@realtimesdk/client": "^0.5.0",
+        "@realtimesdk/core": "^0.5.0",
       },
       "devDependencies": {
         "@types/react": "^19.0.3",
@@ -75,10 +75,10 @@
       },
     },
     "packages/server": {
-      "name": "@realtime/server",
+      "name": "@realtimesdk/server",
       "version": "0.5.0",
       "dependencies": {
-        "@realtime/core": "0.5.0",
+        "@realtimesdk/core": "^0.5.0",
         "socket.io": "^4.8.1",
       },
       "devDependencies": {
@@ -87,11 +87,11 @@
       },
     },
     "tests/next-test": {
-      "name": "@realtime/next-test",
+      "name": "@realtimesdk/next-test",
       "version": "0.5.0",
       "dependencies": {
-        "@realtime/client": "0.5.0",
-        "@realtime/next": "0.5.0",
+        "@realtimesdk/client": "^0.5.0",
+        "@realtimesdk/next": "^0.5.0",
         "@types/react": "^19.2.18",
         "next": "^15.0.0",
         "react": "^19.0.0",
@@ -104,11 +104,11 @@
       },
     },
     "tests/react-test": {
-      "name": "@realtime/react-test",
+      "name": "@realtimesdk/react-test",
       "version": "0.5.0",
       "dependencies": {
-        "@realtime/express": "0.5.0",
-        "@realtime/react": "0.5.0",
+        "@realtimesdk/express": "^0.5.0",
+        "@realtimesdk/react": "^0.5.0",
         "express": "^5.2.1",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
@@ -299,21 +299,21 @@
 
     "@next/swc-win32-x64-msvc": ["@next/swc-win32-x64-msvc@15.5.24", "", { "os": "win32", "cpu": "x64" }, "sha512-JqtwjvvorjacQ0spgjmUJoxySoYgPwdT1sFdQ0/zmW4iMlP2hjYlCoJIyS7o6Epb4Fug8eco3HXFoBDUCDeH7Q=="],
 
-    "@realtime/client": ["@realtime/client@workspace:packages/client"],
+    "@realtimesdk/client": ["@realtimesdk/client@workspace:packages/client"],
 
-    "@realtime/core": ["@realtime/core@workspace:packages/core"],
+    "@realtimesdk/core": ["@realtimesdk/core@workspace:packages/core"],
 
-    "@realtime/express": ["@realtime/express@workspace:packages/express"],
+    "@realtimesdk/express": ["@realtimesdk/express@workspace:packages/express"],
 
-    "@realtime/next": ["@realtime/next@workspace:packages/next"],
+    "@realtimesdk/next": ["@realtimesdk/next@workspace:packages/next"],
 
-    "@realtime/next-test": ["@realtime/next-test@workspace:tests/next-test"],
+    "@realtimesdk/next-test": ["@realtimesdk/next-test@workspace:tests/next-test"],
 
-    "@realtime/react": ["@realtime/react@workspace:packages/react"],
+    "@realtimesdk/react": ["@realtimesdk/react@workspace:packages/react"],
 
-    "@realtime/react-test": ["@realtime/react-test@workspace:tests/react-test"],
+    "@realtimesdk/react-test": ["@realtimesdk/react-test@workspace:tests/react-test"],
 
-    "@realtime/server": ["@realtime/server@workspace:packages/server"],
+    "@realtimesdk/server": ["@realtimesdk/server@workspace:packages/server"],
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.0-beta.27", "", {}, "sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA=="],
 

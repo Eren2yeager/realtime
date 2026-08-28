@@ -1,5 +1,5 @@
-import { createNextRealtime } from "@realtime/next";
-import { createRealtimeClient } from "@realtime/client";
+import { createNextRealtime } from "@realtimesdk/next";
+import { createRealtimeClient } from "@realtimesdk/client";
 const app = (request, response) => {
   if (request.url === "/health") {
     response.writeHead(200);

@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = "0.4";
+export const PROTOCOL_VERSION = "0.5";
 
 export type Metadata = Record<string, unknown>;
 

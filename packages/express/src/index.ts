@@ -1,5 +1,5 @@
 import { createServer, type RequestListener, type Server as HttpServer } from "node:http";
-import { createRealtimeServer, type RealtimeServer, type RealtimeServerOptions } from "@realtime/server";
+import { createRealtimeServer, type RealtimeServer, type RealtimeServerOptions } from "@realtimesdk/server";
 
 /** Express applications implement Node's request-listener contract. */
 export type ExpressApplication = RequestListener;
@@ -15,7 +15,7 @@ export type ExpressRealtime = {
 /**
  * Creates an Express HTTP server and attaches realtime transport to it.
  * The returned `start` method owns listening; authentication and room policy
- * remain the same options accepted by `@realtime/server`.
+ * remain the same options accepted by `@realtimesdk/server`.
  */
 export const createExpressRealtime = (app: ExpressApplication, options: RealtimeServerOptions): ExpressRealtime => {
   const realtime = createRealtimeServer({ ...options, port: undefined });
@@ -53,4 +53,4 @@ export const attachRealtimeToExpress = (realtime: RealtimeServer, app: ExpressAp
   return httpServer;
 };
 
-export type { RealtimeServerOptions, RealtimeServer } from "@realtime/server";
+export type { RealtimeServerOptions, RealtimeServer } from "@realtimesdk/server";

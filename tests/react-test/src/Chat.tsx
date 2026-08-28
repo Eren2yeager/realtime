@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { useCall, useChat, useRealtime } from "@realtime/react";
+import { useCall, useChat, useRealtime } from "@realtimesdk/react";
 
 type DeliveryEvent = { messageId: string; recipientId: string };
 type DeliveryState = Record<string, DeliveryEvent[]>;

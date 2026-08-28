@@ -1,5 +1,5 @@
 {
-  "name": "@realtime/next-test",
+  "name": "@realtimesdk/next-test",
   "private": true,
   "version": "0.5.0",
   "type": "module",
@@ -9,8 +9,8 @@
     "start": "node server.mjs"
   },
   "dependencies": {
-    "@realtime/client": "0.5.0",
-    "@realtime/next": "0.5.0",
+    "@realtimesdk/client": "^0.5.0",
+    "@realtimesdk/next": "^0.5.0",
     "@types/react": "^19.2.18",
     "next": "^15.0.0",
     "react": "^19.0.0",

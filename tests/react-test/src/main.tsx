@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { RealtimeProvider } from "@realtime/react";
-import type { IceServer } from "@realtime/core";
+import { RealtimeProvider } from "@realtimesdk/react";
+import type { IceServer } from "@realtimesdk/core";
 import { Chat } from "./Chat";
 import "./styles.css";
 

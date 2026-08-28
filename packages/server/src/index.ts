@@ -16,7 +16,7 @@ import {
   type RoomAction,
   type SendMessageInput,
   type ServerToClientEvents
-} from "@realtime/core";
+} from "@realtimesdk/core";
 
 type SocketData = { user: AuthenticatedUser; protocolAccepted: boolean };
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, object, SocketData>;

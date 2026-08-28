@@ -1,7 +1,19 @@
 {
-  "name": "realtime-platform",
+  "name": "realtimesdk-platform",
   "private": true,
   "version": "0.5.0",
+  "description": "Framework-independent realtime rooms and messaging for browser clients and one Node.js server.",
+  "license": "MIT",
+  "author": "Eren2yeager",
+  "homepage": "https://github.com/Eren2yeager/realtime#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eren2yeager/realtime.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Eren2yeager/realtime/issues"
+  },
+  "engines": { "node": ">=20" },
   "packageManager": "bun@1.3.4",
   "workspaces": ["packages/*", "tests/react-test", "tests/next-test"],
   "scripts": {
@@ -10,14 +22,16 @@
     "test:react": "bun run --cwd tests/react-test dev",
     "test:express": "bun tests/react-test/server.mjs",
     "test:next": "bun tests/next-test/server.mjs",
-    "test:smoke": "bun tests/smoke/v0.1-smoke-test.mjs && bun tests/smoke/v0.2-smoke-test.mjs && bun tests/smoke/v0.3-smoke-test.mjs && bun tests/smoke/v0.4-smoke-test.mjs && bun tests/smoke/v0.5-express-smoke-test.mjs && bun tests/smoke/v0.5-next-smoke-test.mjs"
+    "test:smoke": "bun tests/smoke/v0.1-smoke-test.mjs && bun tests/smoke/v0.2-smoke-test.mjs && bun tests/smoke/v0.3-smoke-test.mjs && bun tests/smoke/v0.4-smoke-test.mjs && bun tests/smoke/v0.5-express-smoke-test.mjs && bun tests/smoke/v0.5-next-smoke-test.mjs",
+    "test:smoke:public": "if [ ! -d tests/smoke/public-registry/node_modules ]; then bun install --cwd tests/smoke/public-registry; fi && node tests/smoke/public-registry/public-registry-smoke-test.mjs",
+    "publish:all": "bun publish --access public --tag next --workspaces"
   },
   "devDependencies": {
-    "@realtime/client": "workspace:*",
-    "@realtime/core": "workspace:*",
-    "@realtime/express": "workspace:*",
-    "@realtime/next": "workspace:*",
-    "@realtime/react": "workspace:*",
-    "@realtime/server": "workspace:*"
+    "@realtimesdk/client": "workspace:*",
+    "@realtimesdk/core": "workspace:*",
+    "@realtimesdk/express": "workspace:*",
+    "@realtimesdk/next": "workspace:*",
+    "@realtimesdk/react": "workspace:*",
+    "@realtimesdk/server": "workspace:*"
   }
 }

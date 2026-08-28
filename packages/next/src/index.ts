@@ -1,5 +1,5 @@
 import { createServer, type RequestListener, type Server as HttpServer } from "node:http";
-import { createRealtimeServer, type RealtimeServer, type RealtimeServerOptions } from "@realtime/server";
+import { createRealtimeServer, type RealtimeServer, type RealtimeServerOptions } from "@realtimesdk/server";
 
 /** A Next.js request handler (typically `app.getRequestHandler()`). */
 export type NextApplication = RequestListener;
@@ -43,4 +43,4 @@ export const attachRealtimeToNext = (realtime: RealtimeServer, httpServer: HttpS
   return realtime;
 };
 
-export type { RealtimeServerOptions, RealtimeServer } from "@realtime/server";
+export type { RealtimeServerOptions, RealtimeServer } from "@realtimesdk/server";
