@@ -31,7 +31,7 @@ function CallVideo({ stream, muted = false }: { stream?: MediaStream; muted?: bo
 export function Chat({ userId, initialCallWith }: { userId: string; initialCallWith?: string }) {
   const realtime = useRealtime();
   const { messages, userIds, typingUserIds, error: chatError, sendMessage, setTyping } = useChat("lobby");
-  const { calls, error: callError, startAudioCall, startVideoCall, answerAudioCall, answerVideoCall, startScreenShare, stopScreenShare, rejectCall, hangupCall } = useCall();
+  const { calls, error: callError, startAudioCall, startVideoCall, startGroupCall, answerAudioCall, answerVideoCall, joinCall, leaveCall, startScreenShare, stopScreenShare, rejectCall, hangupCall } = useCall();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [targetUserId, setTargetUserId] = useState(initialCallWith ?? "");
@@ -115,9 +115,11 @@ export function Chat({ userId, initialCallWith }: { userId: string; initialCallW
   };
   const runCallAction = (action: () => Promise<unknown>) => void action().catch(() => undefined);
   const visibleMessages = messages.filter((message) => !parseCallSignal(message.content));
+  const oneToOneCalls = calls.filter((call) => !call.isGroup);
+  const groupCalls = calls.filter((call) => call.isGroup);
 
   return <main>
-    <p className="eyebrow">Realtime Platform · v0.4 browser test</p>
+    <p className="eyebrow">Realtime Platform · v0.6 browser test</p>
     <h1>Realtime test console</h1>
     <p>Signed in locally as <strong>{userId}</strong> · {realtime.connected ? "connected" : "connecting..."} · {userIds.length} user{userIds.length === 1 ? "" : "s"} in the lobby</p>
     <p className="presence">Lobby presence: {userIds.length ? userIds.join(", ") : "waiting for room presence..."}</p>
@@ -138,12 +140,28 @@ export function Chat({ userId, initialCallWith }: { userId: string; initialCallW
       {requestedRoomId && <p className="room-id">Private call room: <code>{requestedRoomId}</code></p>}
       {callStatus && <p className="presence">{callStatus}</p>}
       {callError && <p className="error">Call: {callError.message}</p>}
-      {calls.length === 0 ? <p className="empty">No active or ringing calls.</p> : calls.map((call) => <article className="call" key={call.id}>
+      {oneToOneCalls.length === 0 ? <p className="empty">No active or ringing one-to-one calls.</p> : oneToOneCalls.map((call) => <article className="call" key={call.id}>
         <strong>{call.state === "ringing" ? `Incoming or outgoing ${call.mediaType} call with ${call.remoteUserId}` : `${call.mediaType} call with ${call.remoteUserId}: ${call.state}`}</strong><small>Room: {call.roomId}</small>
         {call.mediaType === "video" && call.localStream && <CallVideo stream={call.localStream} muted />}
         {call.remoteStream && call.remoteStream.getVideoTracks().length > 0 && <CallVideo stream={call.remoteStream} />}
         {call.remoteStream && <CallAudio stream={call.remoteStream} />}
         <div className="call-actions">{call.state === "ringing" && !call.localStream && <><button type="button" onClick={() => runCallAction(() => call.mediaType === "video" ? answerVideoCall(call.id) : answerAudioCall(call.id))}>Answer</button><button className="secondary" type="button" onClick={() => runCallAction(() => rejectCall(call.id))}>Reject</button></>}{call.state === "active" && <button type="button" onClick={() => runCallAction(() => call.isScreenSharing ? stopScreenShare(call.id) : startScreenShare(call.id))}>{call.isScreenSharing ? "Stop sharing" : "Share screen"}</button>}<button className="danger" type="button" onClick={() => runCallAction(() => hangupCall(call.id))}>Hang up</button></div>
+      </article>)}
+    </section>
+    <section className="call-panel" aria-label="Group call test">
+      <h2>Group audio and video calls</h2>
+      <p className="empty">Group calls ring every other user currently in the <code>lobby</code>. Start one, then join from the other tabs that are connected to the lobby.</p>
+      <div className="call-controls"><button type="button" onClick={() => void startGroupCall("lobby", { video: false }).catch(() => undefined)} disabled={!realtime.connected}>Start group audio call</button><button type="button" onClick={() => void startGroupCall("lobby", { video: true }).catch(() => undefined)} disabled={!realtime.connected}>Start group video call</button></div>
+      {groupCalls.length === 0 ? <p className="empty">No active or ringing group calls.</p> : groupCalls.map((call) => <article className="call" key={call.id}>
+        <strong>{call.state === "ringing" && !call.localStream ? `Incoming group ${call.mediaType} call from ${call.callerId}` : `Group ${call.mediaType} call: ${call.state}`}</strong><small>Room: {call.roomId} · started by {call.callerId}</small>
+        <small>Participants: {call.participantIds.length ? call.participantIds.join(", ") : "waiting for participants..."}</small>
+        {call.mediaType === "video" && call.localStream && <CallVideo stream={call.localStream} muted />}
+        {Object.entries(call.remoteStreams ?? {}).map(([peerId, stream]) => <div key={peerId}>
+          <strong>{peerId}</strong>
+          {stream.getVideoTracks().length > 0 && <CallVideo stream={stream} />}
+          <CallAudio stream={stream} />
+        </div>)}
+        <div className="call-actions">{call.state === "ringing" && !call.localStream && <><button type="button" onClick={() => runCallAction(() => joinCall(call.id))}>Join</button><button className="secondary" type="button" onClick={() => runCallAction(() => rejectCall(call.id))}>Reject</button></>}{call.state === "active" && call.localStream && <button type="button" onClick={() => runCallAction(() => call.isScreenSharing ? stopScreenShare(call.id) : startScreenShare(call.id))}>{call.isScreenSharing ? "Stop sharing" : "Share screen"}</button>}{call.localStream && <button className="danger" type="button" onClick={() => runCallAction(() => leaveCall(call.id))}>Leave</button>}</div>
       </article>)}
     </section>
   </main>;

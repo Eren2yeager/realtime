@@ -148,6 +148,13 @@ Client A
 
 The realtime server normally handles signaling, not the actual media stream.
 
+One-to-one calls use the private room's single peer. Group calls reuse the same
+signaling flow in a full-mesh topology: every participant exchanges
+offer/answer and ICE candidates with every other participant, while the realtime
+server relays signaling only. A dedicated media server (SFU) is not part of
+version 0.6; mesh keeps the server out of the media path and is appropriate
+for small-to-medium rooms.
+
 ## 8. STUN and TURN
 
 STUN is used to discover viable network addresses.

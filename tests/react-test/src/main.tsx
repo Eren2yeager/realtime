@@ -26,17 +26,19 @@ async function loadIceServers(): Promise<IceServer[]> {
   return response.json() as Promise<IceServer[]>;
 }
 
-try {
-  const iceServers = await loadIceServers();
-  console.log(iceServers)
-  root.render(
-    <StrictMode>
-      <RealtimeProvider url="http://localhost:3000" options={{ query: { userId }, iceServers }}>
-        <Chat userId={userId} initialCallWith={initialCallWith} />
-      </RealtimeProvider>
-    </StrictMode>
-  );
-} catch (reason) {
-  const message = reason instanceof Error ? reason.message : "Unable to load Metered ICE servers.";
-  root.render(<main><p className="error">{message}</p></main>);
-}
+void (async () => {
+  try {
+    const iceServers = await loadIceServers();
+    console.log(iceServers);
+    root.render(
+      <StrictMode>
+        <RealtimeProvider url="http://localhost:3000" options={{ query: { userId }, iceServers }}>
+          <Chat userId={userId} initialCallWith={initialCallWith} />
+        </RealtimeProvider>
+      </StrictMode>
+    );
+  } catch (reason) {
+    const message = reason instanceof Error ? reason.message : "Unable to load Metered ICE servers.";
+    root.render(<main><p className="error">{message}</p></main>);
+  }
+})();

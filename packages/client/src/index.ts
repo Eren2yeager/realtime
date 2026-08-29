@@ -7,6 +7,12 @@ import {
   type CallMediaType,
   type CallRejectedEvent,
   type ClientToServerEvents,
+  type GroupCallIncomingEvent,
+  type GroupCallJoinResult,
+  type GroupCallParticipantEvent,
+  type GroupCallResult,
+  type GroupWebRtcDescriptionEvent,
+  type GroupWebRtcIceCandidateEvent,
   type IceServer,
   type JoinRoomInput,
   type MessageDeliveredEvent,
@@ -40,10 +46,15 @@ type ClientEvents = {
   "call:rejected": (call: RealtimeCall) => void;
   "call:ended": (call: RealtimeCall, event: CallEndedEvent) => void;
   "call:state": (call: RealtimeCall) => void;
-  "call:stream": (call: RealtimeCall, stream: MediaStream) => void;
+  "call:stream": (call: RealtimeCall, stream: MediaStream, peerId?: string) => void;
+  "group:call:participant-joined": (call: RealtimeCall, participantId: string) => void;
+  "group:call:participant-left": (call: RealtimeCall, participantId: string) => void;
   "webrtc:offer": (payload: WebRtcDescriptionEvent) => void;
   "webrtc:answer": (payload: WebRtcDescriptionEvent) => void;
   "webrtc:ice-candidate": (payload: WebRtcIceCandidateEvent) => void;
+  "group:webrtc:offer": (payload: GroupWebRtcDescriptionEvent) => void;
+  "group:webrtc:answer": (payload: GroupWebRtcDescriptionEvent) => void;
+  "group:webrtc:ice-candidate": (payload: GroupWebRtcIceCandidateEvent) => void;
 };
 type Listener<T extends keyof ClientEvents> = ClientEvents[T];
 
@@ -51,11 +62,15 @@ export type RealtimeCallState = "ringing" | "connecting" | "active" | "ended";
 export type RealtimeCall = {
   id: string;
   roomId: string;
-  remoteUserId: string;
+  isGroup: boolean;
+  remoteUserId?: string;
+  callerId?: string;
+  participantIds: string[];
   mediaType: CallMediaType;
   state: RealtimeCallState;
   localStream?: MediaStream;
   remoteStream?: MediaStream;
+  remoteStreams?: Record<string, MediaStream>;
   isScreenSharing?: boolean;
 };
 export type RealtimeClientOptions = Partial<ManagerOptions & SocketOptions> & {
@@ -68,13 +83,21 @@ export type RealtimeClientOptions = Partial<ManagerOptions & SocketOptions> & {
   /** Constraints used by startScreenShare. Defaults to sharing video without system audio. */
   screenShareConstraints?: DisplayMediaStreamOptions;
 };
-type ManagedCall = RealtimeCall & { connection?: RTCPeerConnection; pendingCandidates: WebRtcIceCandidate[]; screenStream?: MediaStream };
+type ManagedCall = RealtimeCall & {
+  selfId?: string;
+  connection?: RTCPeerConnection;
+  pendingCandidates: WebRtcIceCandidate[];
+  connections?: Map<string, RTCPeerConnection>;
+  pendingByPeer?: Map<string, WebRtcIceCandidate[]>;
+  screenStream?: MediaStream;
+};
 
 export class RealtimeClient {
   private readonly socket: Socket<ServerToClientEvents, ClientToServerEvents>;
   private readonly listeners = new Map<keyof ClientEvents, Set<(...args: never[]) => void>>();
   private readonly desiredRooms = new Set<string>();
   private readonly calls = new Map<string, ManagedCall>();
+  private selfId?: string;
   private handshake?: Promise<void>;
   private hasConnected = false;
   private readonly pageHideHandler?: () => void;
@@ -101,9 +124,15 @@ export class RealtimeClient {
     this.socket.on("call:accepted", (payload) => { void this.onCallAccepted(payload); });
     this.socket.on("call:rejected", (payload) => this.onCallRejected(payload));
     this.socket.on("call:ended", (payload) => this.onCallEnded(payload));
+    this.socket.on("group:call:incoming", (payload) => this.onGroupCallIncoming(payload));
+    this.socket.on("group:call:participant-joined", (payload) => this.onGroupParticipantJoined(payload));
+    this.socket.on("group:call:participant-left", (payload) => this.onGroupParticipantLeft(payload));
     this.socket.on("webrtc:offer", (payload) => { this.emit("webrtc:offer", payload); void this.onOffer(payload); });
     this.socket.on("webrtc:answer", (payload) => { this.emit("webrtc:answer", payload); void this.onAnswer(payload); });
     this.socket.on("webrtc:ice-candidate", (payload) => { this.emit("webrtc:ice-candidate", payload); void this.onIceCandidate(payload); });
+    this.socket.on("group:webrtc:offer", (payload) => { this.emit("group:webrtc:offer", payload); void this.onGroupOffer(payload); });
+    this.socket.on("group:webrtc:answer", (payload) => { this.emit("group:webrtc:answer", payload); void this.onGroupAnswer(payload); });
+    this.socket.on("group:webrtc:ice-candidate", (payload) => { this.emit("group:webrtc:ice-candidate", payload); void this.onGroupIceCandidate(payload); });
     if (typeof window !== "undefined") {
       this.pageHideHandler = () => this.disconnect();
       window.addEventListener("pagehide", this.pageHideHandler);
@@ -179,7 +208,7 @@ export class RealtimeClient {
   /** Starts a call without acquiring media, for custom WebRTC integrations. */
   async startCall(roomId: string, mediaType: CallMediaType = "audio"): Promise<RealtimeCall> {
     const result = await this.request<{ callId: string; roomId: string; recipientId: string }>("call:start", { roomId, mediaType });
-    const call: ManagedCall = { id: result.callId, roomId: result.roomId, remoteUserId: result.recipientId, mediaType, state: "ringing", pendingCandidates: [] };
+    const call: ManagedCall = { id: result.callId, roomId: result.roomId, isGroup: false, remoteUserId: result.recipientId, participantIds: [], mediaType, state: "ringing", pendingCandidates: [] };
     this.calls.set(call.id, call);
     this.emit("call:state", this.snapshot(call));
     return this.snapshot(call);
@@ -220,19 +249,28 @@ export class RealtimeClient {
   /** Adds a display-video track to an active call and renegotiates the peer connection. */
   async startScreenShare(callId: string): Promise<MediaStream> {
     const call = this.requireCall(callId);
-    if (!call.connection) throw new Error("Screen sharing is available after the call connects.");
+    if (call.isGroup ? (!call.connections || call.connections.size === 0) : !call.connection) throw new Error("Screen sharing is available after the call connects.");
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia) throw new Error("Screen sharing requires browser display media devices.");
     const screenStream = await navigator.mediaDevices.getDisplayMedia(this.options.screenShareConstraints ?? { video: true, audio: false });
     const screenTrack = screenStream.getVideoTracks()[0];
     if (!screenTrack) { screenStream.getTracks().forEach((track) => track.stop()); throw new Error("No screen video track was selected."); }
     call.screenStream?.getTracks().forEach((track) => track.stop());
     call.screenStream = screenStream;
-    const videoSender = call.connection.getSenders().find((sender) => sender.track?.kind === "video");
-    if (videoSender) await videoSender.replaceTrack(screenTrack);
-    else call.connection.addTrack(screenTrack, screenStream);
+    if (call.isGroup) {
+      for (const [peerId, connection] of call.connections ?? []) {
+        const videoSender = connection.getSenders().find((sender) => sender.track?.kind === "video");
+        if (videoSender) await videoSender.replaceTrack(screenTrack);
+        else connection.addTrack(screenTrack, screenStream);
+        await this.renegotiatePeer(call, peerId, connection);
+      }
+    } else {
+      const videoSender = call.connection!.getSenders().find((sender) => sender.track?.kind === "video");
+      if (videoSender) await videoSender.replaceTrack(screenTrack);
+      else call.connection!.addTrack(screenTrack, screenStream);
+      await this.renegotiate(call);
+    }
     screenTrack.onended = () => { if (call.screenStream === screenStream) void this.stopScreenShare(call.id).catch(() => undefined); };
     this.emit("call:state", this.snapshot(call));
-    await this.renegotiate(call);
     return screenStream;
   }
 
@@ -240,14 +278,23 @@ export class RealtimeClient {
   async stopScreenShare(callId: string): Promise<void> {
     const call = this.requireCall(callId);
     const screenStream = call.screenStream;
-    if (!screenStream || !call.connection) return;
+    if (!screenStream) return;
     call.screenStream = undefined;
     const cameraTrack = call.localStream?.getVideoTracks()[0] ?? null;
-    const videoSender = call.connection.getSenders().find((sender) => sender.track?.kind === "video");
-    if (videoSender) await videoSender.replaceTrack(cameraTrack);
+    if (call.isGroup) {
+      for (const [peerId, connection] of call.connections ?? []) {
+        const videoSender = connection.getSenders().find((sender) => sender.track?.kind === "video");
+        if (videoSender) await videoSender.replaceTrack(cameraTrack);
+        await this.renegotiatePeer(call, peerId, connection);
+      }
+    } else {
+      if (!call.connection) return;
+      const videoSender = call.connection.getSenders().find((sender) => sender.track?.kind === "video");
+      if (videoSender) await videoSender.replaceTrack(cameraTrack);
+      await this.renegotiate(call);
+    }
     screenStream.getTracks().forEach((track) => track.stop());
     this.emit("call:state", this.snapshot(call));
-    await this.renegotiate(call);
   }
 
   /** Accepts a call without acquiring media, for custom WebRTC integrations. */
@@ -266,9 +313,84 @@ export class RealtimeClient {
 
   async hangupCall(callId: string): Promise<void> {
     const call = this.requireCall(callId);
+    if (call.isGroup) return this.leaveCall(callId);
     await this.request("call:hangup", { callId });
     // The server also echoes call:ended; this makes cleanup immediate if a transport closes first.
     this.releaseCall(call, true);
+  }
+
+  /** Starts a group audio or video call that rings every other member currently in the room. */
+  async startGroupCall(roomId: string, options?: { video?: boolean }): Promise<RealtimeCall> {
+    const mediaType: CallMediaType = options?.video ? "video" : "audio";
+    const localStream = mediaType === "video" ? await this.getVideoStream() : await this.getAudioStream();
+    try {
+      const call = await this.startGroupCallRaw(roomId, mediaType);
+      const managed = this.calls.get(call.id)!;
+      managed.localStream = localStream;
+      this.emit("call:state", this.snapshot(managed));
+      return this.snapshot(managed);
+    } catch (error) {
+      localStream.getTracks().forEach((track) => track.stop());
+      throw error;
+    }
+  }
+
+  /** Advanced integration: starts a group call without acquiring media or creating peer connections. */
+  async startGroupCallRaw(roomId: string, mediaType: CallMediaType = "audio"): Promise<RealtimeCall> {
+    const result = await this.request<GroupCallResult>("call:start-group", { roomId, mediaType });
+    this.selfId = result.selfId;
+    const call: ManagedCall = {
+      id: result.callId, roomId: result.roomId, isGroup: true, selfId: result.selfId, callerId: result.selfId,
+      participantIds: result.participantIds, mediaType, state: "ringing", pendingCandidates: []
+    };
+    this.calls.set(call.id, call);
+    this.emit("call:state", this.snapshot(call));
+    return this.snapshot(call);
+  }
+
+  /** Joins a ringing group call and connects the caller's mesh of peer connections. */
+  async joinCall(callId: string): Promise<RealtimeCall> {
+    const call = this.requireCall(callId, "ringing");
+    if (!call.isGroup) throw new Error("Use answerAudioCall or answerVideoCall for one-to-one calls.");
+    call.localStream = call.mediaType === "video" ? await this.getVideoStream() : await this.getAudioStream();
+    try {
+      const joined = await this.joinCallRaw(callId);
+      const managed = this.calls.get(joined.id)!;
+      for (const peer of managed.participantIds.filter((id) => id !== managed.selfId)) {
+        const connection = this.groupConnection(managed, peer);
+        try {
+          const offer = await connection.createOffer();
+          await connection.setLocalDescription(offer);
+          await this.sendGroupOffer(managed.id, peer, this.description(connection.localDescription));
+        } catch (reason) {
+          this.emit("error", reason instanceof Error ? reason : new Error("Unable to create the WebRTC offer."));
+        }
+      }
+      return this.snapshot(managed);
+    } catch (error) {
+      this.releaseCall(call, true);
+      throw error;
+    }
+  }
+
+  /** Advanced integration: joins a group call without acquiring media or creating peer connections. */
+  async joinCallRaw(callId: string): Promise<RealtimeCall> {
+    const call = this.requireCall(callId, "ringing");
+    if (!call.isGroup) throw new Error("Use answerAudioCall or answerVideoCall for one-to-one calls.");
+    const result = await this.request<GroupCallJoinResult>("call:join", { callId });
+    this.selfId = result.selfId;
+    call.selfId = result.selfId;
+    call.participantIds = result.participantIds;
+    this.setCallState(call, "connecting");
+    return this.snapshot(call);
+  }
+
+  /** Leaves a group call without ending it for the other participants. */
+  async leaveCall(callId: string): Promise<void> {
+    const call = this.requireCall(callId);
+    if (!call.isGroup) throw new Error("Use hangupCall for one-to-one calls.");
+    await this.request("call:leave", { callId });
+    this.releaseCall(call, true, { callId: call.id, roomId: call.roomId, endedById: call.selfId, reason: "hangup" });
   }
 
   getCall(callId: string): RealtimeCall | undefined {
@@ -280,6 +402,11 @@ export class RealtimeClient {
   async sendOffer(callId: string, description: WebRtcSessionDescription): Promise<void> { await this.request("webrtc:offer", { callId, description }); }
   async sendAnswer(callId: string, description: WebRtcSessionDescription): Promise<void> { await this.request("webrtc:answer", { callId, description }); }
   async sendIceCandidate(callId: string, candidate: WebRtcIceCandidate): Promise<void> { await this.request("webrtc:ice-candidate", { callId, candidate }); }
+
+  /** Advanced group-call signaling API for applications that manage their own RTCPeerConnections. */
+  sendGroupOffer(callId: string, targetId: string, description: WebRtcSessionDescription): Promise<void> { return this.request("group:webrtc:offer", { callId, targetId, description }); }
+  sendGroupAnswer(callId: string, targetId: string, description: WebRtcSessionDescription): Promise<void> { return this.request("group:webrtc:answer", { callId, targetId, description }); }
+  sendGroupIceCandidate(callId: string, targetId: string, candidate: WebRtcIceCandidate): Promise<void> { return this.request("group:webrtc:ice-candidate", { callId, targetId, candidate }); }
 
   private async onConnected(): Promise<void> {
     try {
@@ -306,7 +433,7 @@ export class RealtimeClient {
     }));
   }
 
-  private async request<T>(event: "call:start" | "call:accept" | "call:reject" | "call:hangup" | "webrtc:offer" | "webrtc:answer" | "webrtc:ice-candidate", input: unknown): Promise<T> {
+  private async request<T>(event: "call:start" | "call:accept" | "call:reject" | "call:hangup" | "call:start-group" | "call:join" | "call:leave" | "webrtc:offer" | "webrtc:answer" | "webrtc:ice-candidate" | "group:webrtc:offer" | "group:webrtc:answer" | "group:webrtc:ice-candidate", input: unknown): Promise<T> {
     await this.ensureHandshake();
     const emit = this.socket as unknown as { emit: (name: string, payload: unknown, ack: (result: Result<T>) => void) => void };
     return new Promise((resolve, reject) => emit.emit(event, input, (result) => {
@@ -316,10 +443,43 @@ export class RealtimeClient {
   }
 
   private onCallIncoming(payload: CallIncomingEvent): void {
-    const call: ManagedCall = { id: payload.callId, roomId: payload.roomId, remoteUserId: payload.callerId, mediaType: payload.mediaType, state: "ringing", pendingCandidates: [] };
+    const call: ManagedCall = { id: payload.callId, roomId: payload.roomId, isGroup: false, remoteUserId: payload.callerId, participantIds: [], mediaType: payload.mediaType, state: "ringing", pendingCandidates: [] };
     this.calls.set(call.id, call);
     this.emit("call:incoming", this.snapshot(call));
     this.emit("call:state", this.snapshot(call));
+  }
+
+  private onGroupCallIncoming(payload: GroupCallIncomingEvent): void {
+    this.selfId = payload.selfId;
+    const call: ManagedCall = {
+      id: payload.callId, roomId: payload.roomId, isGroup: true, selfId: payload.selfId, callerId: payload.callerId,
+      participantIds: payload.participantIds, mediaType: payload.mediaType, state: "ringing", pendingCandidates: []
+    };
+    this.calls.set(call.id, call);
+    this.emit("call:incoming", this.snapshot(call));
+    this.emit("call:state", this.snapshot(call));
+  }
+
+  private onGroupParticipantJoined(payload: GroupCallParticipantEvent): void {
+    const call = this.calls.get(payload.callId);
+    if (!call?.isGroup || call.state === "ended") return;
+    this.selfId = payload.selfId;
+    call.selfId = payload.selfId;
+    call.participantIds = payload.participantIds;
+    if (payload.participantId !== payload.selfId && call.localStream) this.groupConnection(call, payload.participantId);
+    this.emit("call:state", this.snapshot(call));
+    this.emit("group:call:participant-joined", this.snapshot(call), payload.participantId);
+  }
+
+  private onGroupParticipantLeft(payload: GroupCallParticipantEvent): void {
+    const call = this.calls.get(payload.callId);
+    if (!call?.isGroup || call.state === "ended") return;
+    this.selfId = payload.selfId;
+    call.selfId = payload.selfId;
+    call.participantIds = payload.participantIds;
+    this.closeGroupPeer(call, payload.participantId);
+    this.emit("call:state", this.snapshot(call));
+    this.emit("group:call:participant-left", this.snapshot(call), payload.participantId);
   }
 
   private async onCallAccepted(payload: CallAcceptedEvent): Promise<void> {
@@ -345,7 +505,9 @@ export class RealtimeClient {
     const call = this.calls.get(payload.callId);
     if (!call) return;
     this.emit("call:rejected", this.snapshot(call));
-    this.releaseCall(call, true, { callId: call.id, roomId: call.roomId, endedById: payload.recipientId, reason: "rejected" });
+    // A rejected one-to-one call ends. A rejected group invite only removes that
+    // invitee; the call continues for the remaining members.
+    if (!call.isGroup) this.releaseCall(call, true, { callId: call.id, roomId: call.roomId, endedById: payload.recipientId, reason: "rejected" });
   }
 
   private onCallEnded(payload: CallEndedEvent): void {
@@ -388,6 +550,42 @@ export class RealtimeClient {
     catch (reason) { this.emit("error", reason instanceof Error ? reason : new Error("Unable to add the ICE candidate.")); }
   }
 
+  private async onGroupOffer(payload: GroupWebRtcDescriptionEvent): Promise<void> {
+    const call = this.calls.get(payload.callId);
+    if (!call?.isGroup || call.state === "ended") return;
+    try {
+      const connection = this.groupConnection(call, payload.senderId);
+      await connection.setRemoteDescription(payload.description);
+      await this.flushPeerCandidates(call, payload.senderId);
+      const answer = await connection.createAnswer();
+      await connection.setLocalDescription(answer);
+      await this.sendGroupAnswer(call.id, payload.senderId, this.description(connection.localDescription));
+    } catch (reason) { this.emit("error", reason instanceof Error ? reason : new Error("Unable to answer the WebRTC offer.")); }
+  }
+
+  private async onGroupAnswer(payload: GroupWebRtcDescriptionEvent): Promise<void> {
+    const call = this.calls.get(payload.callId);
+    const connection = call?.connections?.get(payload.senderId);
+    if (!call?.isGroup || !connection) return;
+    try { await connection.setRemoteDescription(payload.description); await this.flushPeerCandidates(call, payload.senderId); }
+    catch (reason) { this.emit("error", reason instanceof Error ? reason : new Error("Unable to apply the WebRTC answer.")); }
+  }
+
+  private async onGroupIceCandidate(payload: GroupWebRtcIceCandidateEvent): Promise<void> {
+    const call = this.calls.get(payload.callId);
+    const connection = call?.connections?.get(payload.senderId);
+    if (!call?.isGroup || !connection) return;
+    if (!connection.remoteDescription) {
+      if (!call.pendingByPeer) call.pendingByPeer = new Map();
+      const pending = call.pendingByPeer.get(payload.senderId) ?? [];
+      pending.push(payload.candidate);
+      call.pendingByPeer.set(payload.senderId, pending);
+      return;
+    }
+    try { await connection.addIceCandidate(payload.candidate); }
+    catch (reason) { this.emit("error", reason instanceof Error ? reason : new Error("Unable to add the ICE candidate.")); }
+  }
+
   private createPeerConnection(call: ManagedCall): void {
     if (call.connection) return;
     if (typeof RTCPeerConnection === "undefined") throw new Error("WebRTC is only available in a browser runtime.");
@@ -411,6 +609,59 @@ export class RealtimeClient {
 
   private async flushCandidates(call: ManagedCall): Promise<void> {
     while (call.pendingCandidates.length) await call.connection!.addIceCandidate(call.pendingCandidates.shift()!);
+  }
+
+  private groupConnection(call: ManagedCall, peerId: string): RTCPeerConnection {
+    const existing = call.connections?.get(peerId);
+    if (existing) return existing;
+    if (typeof RTCPeerConnection === "undefined") throw new Error("WebRTC is only available in a browser runtime.");
+    if (!call.connections) call.connections = new Map();
+    if (!call.pendingByPeer) call.pendingByPeer = new Map();
+    const connection = new RTCPeerConnection({ iceServers: this.options.iceServers });
+    call.connections.set(peerId, connection);
+    for (const track of call.localStream?.getTracks() ?? []) connection.addTrack(track, call.localStream!);
+    connection.onicecandidate = (event) => {
+      if (event.candidate) void this.sendGroupIceCandidate(call.id, peerId, this.candidate(event.candidate)).catch((reason) => this.emit("error", reason instanceof Error ? reason : new Error("Unable to send an ICE candidate.")));
+    };
+    connection.ontrack = (event) => {
+      const stream = event.streams[0] ?? new MediaStream([event.track]);
+      call.remoteStreams = { ...(call.remoteStreams ?? {}), [peerId]: stream };
+      this.setCallState(call, "active");
+      this.emit("call:state", this.snapshot(call));
+      this.emit("call:stream", this.snapshot(call), stream, peerId);
+    };
+    connection.onconnectionstatechange = () => {
+      if (connection.connectionState === "failed" || connection.connectionState === "closed") {
+        this.emit("error", new Error(`Media connection with ${peerId} was lost.`));
+        this.closeGroupPeer(call, peerId);
+      }
+    };
+    return connection;
+  }
+
+  private closeGroupPeer(call: ManagedCall, peerId: string): void {
+    const connection = call.connections?.get(peerId);
+    if (!connection) return;
+    call.connections?.delete(peerId);
+    call.pendingByPeer?.delete(peerId);
+    connection.onconnectionstatechange = null;
+    connection.close();
+    if (call.remoteStreams) delete call.remoteStreams[peerId];
+    this.emit("call:state", this.snapshot(call));
+  }
+
+  private async flushPeerCandidates(call: ManagedCall, peerId: string): Promise<void> {
+    const connection = call.connections?.get(peerId);
+    if (!connection) return;
+    const pending = call.pendingByPeer?.get(peerId) ?? [];
+    while (pending.length) await connection.addIceCandidate(pending.shift()!);
+  }
+
+  private async renegotiatePeer(call: ManagedCall, peerId: string, connection: RTCPeerConnection): Promise<void> {
+    if (connection.signalingState !== "stable") throw new Error("A peer connection is busy negotiating. Try screen sharing again in a moment.");
+    const offer = await connection.createOffer();
+    await connection.setLocalDescription(offer);
+    await this.sendGroupOffer(call.id, peerId, this.description(connection.localDescription));
   }
 
   private getAudioStream(): Promise<MediaStream> {
@@ -437,6 +688,13 @@ export class RealtimeClient {
   }
 
   private releaseCall(call: ManagedCall, remove: boolean, ended?: CallEndedEvent): void {
+    for (const connection of call.connections?.values() ?? []) {
+      connection.onconnectionstatechange = null;
+      connection.close();
+    }
+    call.connections?.clear();
+    call.pendingByPeer?.clear();
+    call.remoteStreams = undefined;
     const connection = call.connection;
     call.connection = undefined;
     if (connection) { connection.onconnectionstatechange = null; connection.close(); }
@@ -458,7 +716,11 @@ export class RealtimeClient {
   }
 
   private snapshot(call: ManagedCall): RealtimeCall {
-    return { id: call.id, roomId: call.roomId, remoteUserId: call.remoteUserId, mediaType: call.mediaType, state: call.state, localStream: call.localStream, remoteStream: call.remoteStream, isScreenSharing: Boolean(call.screenStream) };
+    return {
+      id: call.id, roomId: call.roomId, isGroup: call.isGroup, remoteUserId: call.remoteUserId, callerId: call.callerId,
+      participantIds: call.participantIds, mediaType: call.mediaType, state: call.state, localStream: call.localStream,
+      remoteStream: call.remoteStream, remoteStreams: call.remoteStreams, isScreenSharing: Boolean(call.screenStream)
+    };
   }
 
   private description(value: RTCSessionDescription | null): WebRtcSessionDescription {

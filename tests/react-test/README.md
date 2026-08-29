@@ -1,6 +1,6 @@
-# React browser test (v0.4)
+# React browser test (v0.6)
 
-This is a local-only browser integration test for the v0.4 packages and runs
+This is a local-only browser integration test for the v0.6 packages and runs
 the realtime server through the `@realtimesdk/express` adapter. It uses
 query-string identities and permissive room access solely to make testing easy.
 
@@ -43,6 +43,16 @@ and renders remote video. Use **Share screen** during an active call to replace
 your outgoing video with a display capture; stop it from the same control or
 from the browser's share picker. A local HTTPS origin is required by browsers
 that do not treat `localhost` as a secure context.
+
+To test group calls, open at least three tabs (for example
+`?user=alice`, `?user=bob`, and `?user=carol`) and click **Start group audio
+call** or **Start group video call** from one tab. The call rings every other
+user connected to the lobby; each tab shows an incoming group call with
+**Join** and **Reject** controls. Joining connects that tab into the full-mesh
+call, where every participant sees the other participants' remote streams,
+can **Share screen** (which renegotiates with every peer), and can **Leave**
+without ending the call for the others. The call ends when the last
+participant leaves.
 
 Reload either tab while both are in the lobby to verify automatic room
 restoration and the updated presence state. Press `Ctrl+C` in each terminal to

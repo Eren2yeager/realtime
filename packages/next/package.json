@@ -1,6 +1,6 @@
 {
   "name": "@realtimesdk/next",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Next.js custom HTTP server adapter that hosts the realtimesdk transport during Next.js server lifecycle.",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,7 +25,7 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "dependencies": { "@realtimesdk/server": "^0.5.0" },
+  "dependencies": { "@realtimesdk/server": "^0.6.0" },
   "peerDependencies": { "next": ">=13.0.0" },
   "devDependencies": { "@types/node": "^22.10.5", "typescript": "^5.7.3" }
 }

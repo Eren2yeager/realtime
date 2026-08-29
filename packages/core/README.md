@@ -26,7 +26,7 @@ npm install @realtimesdk/core
 ```ts
 import { PROTOCOL_VERSION, directRoomId, type RealtimeMessage } from "@realtimesdk/core";
 
-console.log(PROTOCOL_VERSION); // "0.5"
+console.log(PROTOCOL_VERSION); // "0.6"
 const roomId = directRoomId("alice", "bob"); // "dm:alice:bob"
 ```
 

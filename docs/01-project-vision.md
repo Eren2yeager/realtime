@@ -91,6 +91,9 @@ The CLI should detect the framework and generate the appropriate integration.
 ### Calling
 - One-to-one audio calls
 - One-to-one video calls
+- Group audio calls
+- Group video calls
+- In-call participant join/leave
 - Call accept/reject
 - Hang up
 - Call state management

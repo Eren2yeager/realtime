@@ -10,6 +10,10 @@ import {
   type CallResponseInput,
   type CallStartInput,
   type ClientToServerEvents,
+  type GroupCallIncomingEvent,
+  type GroupCallJoinResult,
+  type GroupCallParticipantEvent,
+  type GroupCallResult,
   type JoinRoomInput,
   type MessageDeliveredEvent,
   type Result,
@@ -32,6 +36,20 @@ type ActiveCall = {
   timeout: ReturnType<typeof setTimeout>;
 };
 
+type ActiveGroupCall = {
+  id: string;
+  roomId: string;
+  callerSocketId: string;
+  callerId: string;
+  mediaType: CallMediaType;
+  state: "ringing" | "active";
+  /** userId -> socketId of participants who have joined (the caller is a participant from the start). */
+  participants: Map<string, string>;
+  /** userId -> socketId of members still being rung. */
+  invitees: Map<string, string>;
+  timeout: ReturnType<typeof setTimeout>;
+};
+
 export type RealtimeServerOptions = {
   port?: number;
   cors?: { origin?: string | string[]; credentials?: boolean };
@@ -48,6 +66,7 @@ export class RealtimeServer {
   readonly io: Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>;
   private httpServer?: HttpServer;
   private readonly calls = new Map<string, ActiveCall>();
+  private readonly groupCalls = new Map<string, ActiveGroupCall>();
 
   constructor(private readonly options: RealtimeServerOptions) {
     this.io = new Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>({ cors: options.cors });
@@ -80,6 +99,8 @@ export class RealtimeServer {
   async close(): Promise<void> {
     for (const call of this.calls.values()) clearTimeout(call.timeout);
     this.calls.clear();
+    for (const call of this.groupCalls.values()) clearTimeout(call.timeout);
+    this.groupCalls.clear();
     // Forcibly close every client connection at the engine.io layer first; without
     // this the HTTP server can hold polling sockets open indefinitely while
     // waiting for graceful disconnects.
@@ -124,6 +145,11 @@ export class RealtimeServer {
       for (const call of [...this.calls.values()]) {
         if (call.roomId === input.roomId && (call.callerSocketId === socket.id || call.recipientSocketId === socket.id)) {
           this.finishCall(call, "room-left", socket.data.user.userId, false);
+        }
+      }
+      for (const call of [...this.groupCalls.values()]) {
+        if (call.roomId === input.roomId && (call.participants.has(socket.data.user.userId) || call.invitees.has(socket.data.user.userId))) {
+          this.leaveGroupCall(call, socket.data.user.userId, "room-left");
         }
       }
       ack({ ok: true, data: { roomId: input.roomId } });
@@ -193,6 +219,16 @@ export class RealtimeServer {
     });
 
     socket.on("call:reject", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validCallId(input, ack)) return;
+      const groupCall = this.groupCalls.get(input.callId);
+      if (groupCall) {
+        if (groupCall.invitees.has(socket.data.user.userId)) {
+          this.io.to(groupCall.callerSocketId).emit("call:rejected", { callId: groupCall.id, roomId: groupCall.roomId, recipientId: socket.data.user.userId });
+          groupCall.invitees.delete(socket.data.user.userId);
+          if (groupCall.participants.size === 0 && groupCall.invitees.size === 0) this.finishGroupCall(groupCall, "rejected", socket.data.user.userId);
+        }
+        return ack({ ok: true, data: { callId: groupCall.id } });
+      }
       const call = await this.callFor(socket, input, ack, "recipient", "ringing");
       if (!call) return;
       if (!(await this.allowed(socket, call.roomId, "call", ack))) return;
@@ -202,10 +238,92 @@ export class RealtimeServer {
     });
 
     socket.on("call:hangup", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validCallId(input, ack)) return;
+      const groupCall = this.groupCalls.get(input.callId);
+      if (groupCall) {
+        if (!(await this.allowed(socket, groupCall.roomId, "call", ack))) return;
+        if (groupCall.participants.has(socket.data.user.userId) || groupCall.invitees.has(socket.data.user.userId)) {
+          this.leaveGroupCall(groupCall, socket.data.user.userId, "hangup");
+        }
+        return ack({ ok: true, data: { callId: groupCall.id } });
+      }
       const call = await this.callFor(socket, input, ack, "participant");
       if (!call) return;
       if (!(await this.allowed(socket, call.roomId, "call", ack))) return;
       this.finishCall(call, "hangup", socket.data.user.userId);
+      ack({ ok: true, data: { callId: call.id } });
+    });
+
+    socket.on("call:start-group", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validCallStart(input, ack)) return;
+      if (!socket.rooms.has(input.roomId)) return ack(errorResult("NOT_IN_ROOM", "Join the room before starting a group call."));
+      if (!(await this.allowed(socket, input.roomId, "call", ack))) return;
+      const inviteeSockets = (await this.io.in(input.roomId).fetchSockets()).filter((candidate) => candidate.id !== socket.id && candidate.data.user?.userId && candidate.data.user.userId !== socket.data.user.userId);
+      const inviteeMap = new Map<string, string>();
+      const participantIds = [socket.data.user.userId];
+      for (const invitee of inviteeSockets) {
+        if (!inviteeMap.has(invitee.data.user.userId)) {
+          inviteeMap.set(invitee.data.user.userId, invitee.id);
+          participantIds.push(invitee.data.user.userId);
+        }
+      }
+      const callId = randomUUID();
+      const call: ActiveGroupCall = {
+        id: callId,
+        roomId: input.roomId,
+        callerSocketId: socket.id,
+        callerId: socket.data.user.userId,
+        mediaType: input.mediaType ?? "audio",
+        state: "ringing",
+        participants: new Map([[socket.data.user.userId, socket.id]]),
+        invitees: inviteeMap,
+        timeout: setTimeout(() => this.endGroupCall(callId, "timeout"), this.options.callTimeoutMs ?? 30_000)
+      };
+      this.groupCalls.set(callId, call);
+      const incoming: GroupCallIncomingEvent = { callId, roomId: call.roomId, callerId: call.callerId, mediaType: call.mediaType, participantIds, selfId: "" };
+      for (const [userId, socketId] of inviteeMap) {
+        const inviteeSocket = this.io.sockets.sockets.get(socketId);
+        inviteeSocket?.emit("group:call:incoming", { ...incoming, selfId: userId });
+      }
+      ack({ ok: true, data: { callId, roomId: call.roomId, participantIds, selfId: socket.data.user.userId } as GroupCallResult });
+    });
+
+    socket.on("call:join", async (input, ack) => {
+      const call = await this.groupCallFor(socket, input, ack, "invitee");
+      if (!call) return;
+      if (!(await this.allowed(socket, call.roomId, "call", ack))) return;
+      call.invitees.delete(socket.data.user.userId);
+      call.participants.set(socket.data.user.userId, socket.id);
+      if (call.state === "ringing") {
+        call.state = "active";
+        clearTimeout(call.timeout);
+      }
+      const participantIds = [...call.participants.keys()];
+      const participantJoined: GroupCallParticipantEvent = { callId: call.id, roomId: call.roomId, participantId: socket.data.user.userId, participantIds, selfId: "" };
+      for (const [participantId, socketId] of call.participants) {
+        if (participantId === socket.data.user.userId) continue;
+        this.io.sockets.sockets.get(socketId)?.emit("group:call:participant-joined", { ...participantJoined, selfId: participantId });
+      }
+      ack({ ok: true, data: { callId: call.id, participantIds, selfId: socket.data.user.userId } as GroupCallJoinResult });
+    });
+
+    socket.on("call:leave", async (input, ack) => {
+      const call = await this.groupCallFor(socket, input, ack, "participant");
+      if (!call) return;
+      if (!(await this.allowed(socket, call.roomId, "call", ack))) return;
+      this.leaveGroupCall(call, socket.data.user.userId, "hangup");
+      ack({ ok: true, data: { callId: call.id } });
+    });
+
+    socket.on("group:webrtc:offer", async (input, ack) => this.relayGroupDescription(socket, input, ack, "group:webrtc:offer"));
+    socket.on("group:webrtc:answer", async (input, ack) => this.relayGroupDescription(socket, input, ack, "group:webrtc:answer"));
+    socket.on("group:webrtc:ice-candidate", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validGroupCandidate(input, ack)) return;
+      const call = await this.groupCallFor(socket, input, ack, "participant", "active");
+      if (!call || !(await this.allowed(socket, call.roomId, "webrtc", ack))) return;
+      const targetSocketId = call.participants.get(input.targetId);
+      if (!targetSocketId) return ack(errorResult("UNAUTHORIZED", "The signaling target is not a participant in this call."));
+      this.io.to(targetSocketId).emit("group:webrtc:ice-candidate", { callId: call.id, roomId: call.roomId, senderId: socket.data.user.userId, targetId: input.targetId, candidate: input.candidate });
       ack({ ok: true, data: { callId: call.id } });
     });
 
@@ -279,6 +397,19 @@ export class RealtimeServer {
     return true;
   }
 
+  private validGroupTarget<T>(input: { targetId?: unknown }, ack: (result: Result<T>) => void): boolean {
+    if (typeof input.targetId !== "string" || !input.targetId || input.targetId.length > 200) {
+      ack(invalid("targetId must be a non-empty string no longer than 200 characters."));
+      return false;
+    }
+    return true;
+  }
+
+  private validGroupCandidate<T>(input: { callId?: unknown; targetId?: unknown; candidate?: { candidate?: unknown; sdpMid?: unknown; sdpMLineIndex?: unknown; usernameFragment?: unknown } }, ack: (result: Result<T>) => void): boolean {
+    if (!this.validCallId(input, ack) || !this.validGroupTarget(input, ack)) return false;
+    return this.validCandidate(input, ack);
+  }
+
   private async announceDisconnect(socket: TypedSocket): Promise<void> {
     const rooms = [...socket.rooms].filter((roomId) => roomId !== socket.id);
     for (const roomId of rooms) {
@@ -288,6 +419,11 @@ export class RealtimeServer {
     }
     for (const call of [...this.calls.values()]) {
       if (call.callerSocketId === socket.id || call.recipientSocketId === socket.id) this.finishCall(call, "disconnected", socket.data.user.userId, false);
+    }
+    for (const call of [...this.groupCalls.values()]) {
+      if (call.participants.has(socket.data.user.userId) || call.invitees.has(socket.data.user.userId)) {
+        this.leaveGroupCall(call, socket.data.user.userId, "disconnected");
+      }
     }
   }
 
@@ -320,6 +456,21 @@ export class RealtimeServer {
     return call;
   }
 
+  private async groupCallFor<T>(socket: TypedSocket, input: { callId?: unknown }, ack: (result: Result<T>) => void, role: "caller" | "participant" | "invitee", state?: ActiveGroupCall["state"]): Promise<ActiveGroupCall | undefined> {
+    if (!this.ready(socket, ack) || !this.validCallId(input, ack)) return undefined;
+    const call = this.groupCalls.get(input.callId);
+    if (!call) { ack(errorResult("CALL_NOT_FOUND", "The call no longer exists.")); return undefined; }
+    const isCaller = call.callerSocketId === socket.id;
+    const isParticipant = call.participants.has(socket.data.user.userId);
+    const isInvitee = call.invitees.has(socket.data.user.userId);
+    if ((role === "caller" && !isCaller) || (role === "participant" && !isParticipant) || (role === "invitee" && !isInvitee)) {
+      ack(errorResult("UNAUTHORIZED", "You are not authorized for this action on the call."));
+      return undefined;
+    }
+    if (state && call.state !== state) { ack(errorResult("CALL_INVALID_STATE", `This action is not available while the call is ${call.state}.`)); return undefined; }
+    return call;
+  }
+
   private async relayDescription<T>(socket: TypedSocket, input: { callId?: unknown; description?: { type?: unknown; sdp?: unknown } }, ack: (result: Result<T>) => void, event: "webrtc:offer" | "webrtc:answer"): Promise<void> {
     if (!this.ready(socket, ack) || !this.validDescription(input, ack)) return;
     const call = await this.callFor(socket, input, ack, "participant", "active");
@@ -329,9 +480,35 @@ export class RealtimeServer {
     ack({ ok: true, data: { callId: call.id } } as Result<T>);
   }
 
+  private async relayGroupDescription<T>(socket: TypedSocket, input: { callId?: unknown; targetId?: unknown; description?: { type?: unknown; sdp?: unknown } }, ack: (result: Result<T>) => void, event: "group:webrtc:offer" | "group:webrtc:answer"): Promise<void> {
+    if (!this.ready(socket, ack) || !this.validCallId(input, ack) || !this.validGroupTarget(input, ack) || !this.validDescription(input, ack)) return;
+    const call = await this.groupCallFor(socket, input, ack, "participant", "active");
+    if (!call || !(await this.allowed(socket, call.roomId, "webrtc", ack))) return;
+    const targetSocketId = call.participants.get(input.targetId as string);
+    if (!targetSocketId) return ack(errorResult("UNAUTHORIZED", "The signaling target is not a participant in this call."));
+    this.io.to(targetSocketId).emit(event, { callId: call.id, roomId: call.roomId, senderId: socket.data.user.userId, targetId: input.targetId as string, description: input.description as { type: "offer" | "answer"; sdp: string } });
+    ack({ ok: true, data: { callId: call.id } } as Result<T>);
+  }
+
+  private leaveGroupCall(call: ActiveGroupCall, userId: string, reason: CallEndReason): void {
+    const wasParticipant = call.participants.delete(userId);
+    const wasInvitee = call.invitees.delete(userId);
+    if (!wasParticipant && !wasInvitee) return;
+    const participantIds = [...call.participants.keys()];
+    for (const [participantId, socketId] of call.participants) {
+      this.io.sockets.sockets.get(socketId)?.emit("group:call:participant-left", { callId: call.id, roomId: call.roomId, participantId: userId, participantIds, selfId: participantId });
+    }
+    if (call.participants.size === 0) this.finishGroupCall(call, reason, userId);
+  }
+
   private endCall(callId: string, reason: CallEndReason): void {
     const call = this.calls.get(callId);
     if (call) this.finishCall(call, reason);
+  }
+
+  private endGroupCall(callId: string, reason: CallEndReason): void {
+    const call = this.groupCalls.get(callId);
+    if (call) this.finishGroupCall(call, reason);
   }
 
   private finishCall(call: ActiveCall, reason: CallEndReason, endedById?: string, notifyBoth = true): void {
@@ -345,6 +522,14 @@ export class RealtimeServer {
       const remainingSocketId = endedById === call.callerId ? call.recipientSocketId : call.callerSocketId;
       this.io.to(remainingSocketId).emit("call:ended", event);
     }
+  }
+
+  private finishGroupCall(call: ActiveGroupCall, reason: CallEndReason, endedById?: string): void {
+    if (!this.groupCalls.delete(call.id)) return;
+    clearTimeout(call.timeout);
+    const event = { callId: call.id, roomId: call.roomId, endedById, reason };
+    const socketIds = new Set<string>([...call.participants.values(), ...call.invitees.values()]);
+    for (const socketId of socketIds) this.io.to(socketId).emit("call:ended", event);
   }
 }
 

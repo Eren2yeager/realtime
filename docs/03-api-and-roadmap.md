@@ -38,9 +38,24 @@ const {
 startAudioCall("private:alice:bob");
 ```
 
-Calls are room-scoped: the room must contain exactly one other user. Each call
-entry exposes its lifecycle state and local/remote `MediaStream` values when
-available.
+Calls are room-scoped. A one-to-one call uses a private room containing exactly
+one other user; a group call rings every other authorized member of the room.
+Each call entry exposes its lifecycle state and local/remote `MediaStream`
+values when available.
+
+```js
+const {
+  calls,
+  startGroupCall,
+  joinCall,
+  leaveCall,
+  hangupCall
+} = useCall();
+
+startGroupCall("lobby", { video: true }); // ring every other member of the room
+joinCall(call.id);                        // accept an incoming group call
+leaveCall(call.id);                       // leave without ending the call
+```
 
 ### Screen Sharing
 
@@ -226,25 +241,42 @@ Delivered:
 - In-call screen sharing with WebRTC renegotiation
 - Application-provided STUN/TURN ICE configuration (introduced in v0.3 and retained)
 
-### Version 0.5 – In Progress
+### Version 0.5 - complete
 
 Add:
 
-- Express adapter – complete, pending verification
+- Express adapter – complete
 - Next.js integration
-- CLI initialization
 
+### Version 0.6 — Complete
+
+Add:
+
+- Group audio calls
+- Group video calls
+- In-call participant join/leave
+- Group screen sharing
+- Full-mesh WebRTC topology for group media
+
+Group calls are room-scoped and ring every other authorized member of the
+room, removing the one-to-one "exactly one other user" requirement. Each
+participant joins or leaves independently while the call is active, and the
+call ends when the last participant leaves. The server relays signaling only;
+media stays peer-to-peer over a full-mesh topology. A selective-forwarding
+unit (SFU) may be introduced later for large rooms.
+ 
 ### Later
 
 Potential features:
 
-- Group calls
 - Redis-backed horizontal scaling
 - Custom transports
 - Storage adapters
 - Advanced authorization
 - Moderation hooks
 - Analytics hooks
+- CLI initialization
+
 
 ## 7. Important Engineering Risks
 

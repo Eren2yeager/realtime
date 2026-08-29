@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = "0.5";
+export const PROTOCOL_VERSION = "0.6";
 
 export type Metadata = Record<string, unknown>;
 
@@ -47,6 +47,12 @@ export type CallRejectedEvent = { callId: string; roomId: string; recipientId: s
 export type CallEndReason = "hangup" | "rejected" | "timeout" | "disconnected" | "room-left";
 export type CallEndedEvent = { callId: string; roomId: string; endedById?: string; reason: CallEndReason };
 
+export type GroupCallStartInput = { roomId: string; mediaType?: CallMediaType };
+export type GroupCallResult = { callId: string; roomId: string; participantIds: string[]; selfId: string };
+export type GroupCallJoinResult = { callId: string; participantIds: string[]; selfId: string };
+export type GroupCallIncomingEvent = { callId: string; roomId: string; callerId: string; mediaType: CallMediaType; participantIds: string[]; selfId: string };
+export type GroupCallParticipantEvent = { callId: string; roomId: string; participantId: string; participantIds: string[]; selfId: string };
+
 export type WebRtcSessionDescription = { type: "offer" | "answer"; sdp: string };
 export type WebRtcIceCandidate = {
   candidate: string;
@@ -58,6 +64,10 @@ export type WebRtcDescriptionInput = { callId: string; description: WebRtcSessio
 export type WebRtcIceCandidateInput = { callId: string; candidate: WebRtcIceCandidate };
 export type WebRtcDescriptionEvent = { callId: string; roomId: string; senderId: string; description: WebRtcSessionDescription };
 export type WebRtcIceCandidateEvent = { callId: string; roomId: string; senderId: string; candidate: WebRtcIceCandidate };
+export type GroupWebRtcDescriptionInput = { callId: string; targetId: string; description: WebRtcSessionDescription };
+export type GroupWebRtcIceCandidateInput = { callId: string; targetId: string; candidate: WebRtcIceCandidate };
+export type GroupWebRtcDescriptionEvent = { callId: string; roomId: string; senderId: string; targetId: string; description: WebRtcSessionDescription };
+export type GroupWebRtcIceCandidateEvent = { callId: string; roomId: string; senderId: string; targetId: string; candidate: WebRtcIceCandidate };
 
 export type RealtimeErrorCode =
   | "AUTHENTICATION_FAILED"
@@ -83,9 +93,15 @@ export type ClientToServerEvents = {
   "call:accept": (input: CallResponseInput, ack: (result: Result<{ callId: string }>) => void) => void;
   "call:reject": (input: CallResponseInput, ack: (result: Result<{ callId: string }>) => void) => void;
   "call:hangup": (input: CallHangupInput, ack: (result: Result<{ callId: string }>) => void) => void;
+  "call:start-group": (input: GroupCallStartInput, ack: (result: Result<GroupCallResult>) => void) => void;
+  "call:join": (input: CallResponseInput, ack: (result: Result<GroupCallJoinResult>) => void) => void;
+  "call:leave": (input: CallResponseInput, ack: (result: Result<{ callId: string }>) => void) => void;
   "webrtc:offer": (input: WebRtcDescriptionInput, ack: (result: Result<{ callId: string }>) => void) => void;
   "webrtc:answer": (input: WebRtcDescriptionInput, ack: (result: Result<{ callId: string }>) => void) => void;
   "webrtc:ice-candidate": (input: WebRtcIceCandidateInput, ack: (result: Result<{ callId: string }>) => void) => void;
+  "group:webrtc:offer": (input: GroupWebRtcDescriptionInput, ack: (result: Result<{ callId: string }>) => void) => void;
+  "group:webrtc:answer": (input: GroupWebRtcDescriptionInput, ack: (result: Result<{ callId: string }>) => void) => void;
+  "group:webrtc:ice-candidate": (input: GroupWebRtcIceCandidateInput, ack: (result: Result<{ callId: string }>) => void) => void;
 };
 
 export type ServerToClientEvents = {
@@ -102,9 +118,15 @@ export type ServerToClientEvents = {
   "call:accepted": (payload: CallAcceptedEvent) => void;
   "call:rejected": (payload: CallRejectedEvent) => void;
   "call:ended": (payload: CallEndedEvent) => void;
+  "group:call:incoming": (payload: GroupCallIncomingEvent) => void;
+  "group:call:participant-joined": (payload: GroupCallParticipantEvent) => void;
+  "group:call:participant-left": (payload: GroupCallParticipantEvent) => void;
   "webrtc:offer": (payload: WebRtcDescriptionEvent) => void;
   "webrtc:answer": (payload: WebRtcDescriptionEvent) => void;
   "webrtc:ice-candidate": (payload: WebRtcIceCandidateEvent) => void;
+  "group:webrtc:offer": (payload: GroupWebRtcDescriptionEvent) => void;
+  "group:webrtc:answer": (payload: GroupWebRtcDescriptionEvent) => void;
+  "group:webrtc:ice-candidate": (payload: GroupWebRtcIceCandidateEvent) => void;
   error: (error: RealtimeError) => void;
 };
 

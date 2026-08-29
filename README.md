@@ -1,6 +1,6 @@
 ## Public Preview
 
-# Realtime Platform (v0.5)
+# Realtime Platform (v0.6)
 
 Framework-independent realtime rooms and messaging for browser clients and one Node.js server.
 
@@ -12,7 +12,7 @@ Framework-independent realtime rooms and messaging for browser clients and one N
 [![npm (scoped)](https://img.shields.io/npm/v/@realtimesdk/next?label=%40realtimesdk%2Fnext)](https://www.npmjs.com/package/@realtimesdk/next)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-## v0.4 capabilities
+## v0.6 capabilities
 
 - Room-scoped online/offline presence, including a presence snapshot on join
 - Typing start/stop events
@@ -22,6 +22,7 @@ Framework-independent realtime rooms and messaging for browser clients and one N
 - Authenticated, room-authorized WebRTC offer, answer, and ICE-candidate signaling
 - One-to-one browser audio calls, including accept, reject, hangup, ringing timeout, and disconnect handling
 - One-to-one browser video calls and in-call screen sharing
+- Group audio and video calls over a full-mesh peer topology, with in-call join/leave and group screen sharing
 - Application-provided STUN/TURN (`iceServers`) configuration; media remains peer-to-peer
 
 ## Packages
@@ -136,6 +137,30 @@ During an active call, use `startScreenShare(call.id)` and `stopScreenShare(call
 
 `startCall`, `acceptCall`, `sendOffer`, `sendAnswer`, and `sendIceCandidate`
 are also available for applications that manage their own `RTCPeerConnection`.
+
+## Group calls (v0.6)
+
+Group calls are room-scoped and ring every other authorized member of the
+room instead of a single peer. Each participant joins or leaves independently;
+the call ends when the last participant leaves.
+
+```ts
+const call = await realtime.startGroupCall("lobby", { video: true });
+
+// Each invitee accepts independently:
+await realtime.joinCall(call.id);
+// Leave without ending the call for others:
+await realtime.leaveCall(call.id);
+```
+
+Media is exchanged over a full-mesh peer topology — the server relays signaling
+only and never receives the media stream. Screen sharing during a group call
+uses `startScreenShare(call.id)` / `stopScreenShare(call.id)`.
+
+For applications that manage their own `RTCPeerConnection`s, `startGroupCallRaw`
+and `joinCallRaw` start or join a group call without acquiring media, and
+`sendGroupOffer`, `sendGroupAnswer`, and `sendGroupIceCandidate` relay
+point-to-point signaling between named participants.
 
 
 ## React

@@ -1,7 +1,7 @@
 {
   "name": "realtimesdk-platform",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Framework-independent realtime rooms and messaging for browser clients and one Node.js server.",
   "license": "MIT",
   "author": "Eren2yeager",
@@ -22,9 +22,9 @@
     "test:react": "bun run --cwd tests/react-test dev",
     "test:express": "bun tests/react-test/server.mjs",
     "test:next": "bun tests/next-test/server.mjs",
-    "test:smoke": "bun tests/smoke/v0.1-smoke-test.mjs && bun tests/smoke/v0.2-smoke-test.mjs && bun tests/smoke/v0.3-smoke-test.mjs && bun tests/smoke/v0.4-smoke-test.mjs && bun tests/smoke/v0.5-express-smoke-test.mjs && bun tests/smoke/v0.5-next-smoke-test.mjs",
+    "test:smoke": "bun tests/smoke/v0.1-smoke-test.mjs && bun tests/smoke/v0.2-smoke-test.mjs && bun tests/smoke/v0.3-smoke-test.mjs && bun tests/smoke/v0.4-smoke-test.mjs && bun tests/smoke/v0.5-express-smoke-test.mjs && bun tests/smoke/v0.5-next-smoke-test.mjs && bun tests/smoke/v0.6-group-call-smoke-test.mjs",
     "test:smoke:public": "if [ ! -d tests/smoke/public-registry/node_modules ]; then bun install --cwd tests/smoke/public-registry; fi && node tests/smoke/public-registry/public-registry-smoke-test.mjs",
-    "publish:all": "bun publish --access public --tag next --workspaces"
+    "publish:all": "bun publish --cwd packages/core --access public --tag latest && bun publish --cwd packages/server --access public --tag latest && bun publish --cwd packages/client --access public --tag latest && bun publish --cwd packages/react --access public --tag latest && bun publish --cwd packages/express --access public --tag latest && bun publish --cwd packages/next --access public --tag latest"
   },
   "devDependencies": {
     "@realtimesdk/client": "workspace:*",
