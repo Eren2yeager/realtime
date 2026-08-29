@@ -262,8 +262,46 @@ Group calls are room-scoped and ring every other authorized member of the
 room, removing the one-to-one "exactly one other user" requirement. Each
 participant joins or leaves independently while the call is active, and the
 call ends when the last participant leaves. The server relays signaling only;
-media stays peer-to-peer over a full-mesh topology. A selective-forwarding
-unit (SFU) may be introduced later for large rooms.
+media stays peer-to-peer over a full-mesh topology.
+
+### Version 0.7 — In Progress
+
+Add:
+
+- A new `@realtimesdk/sfu` package: a self-hosted media-routing node for large group calls
+- Hub-and-spoke group media topology as an alternative to full-mesh
+- Application-provided SFU configuration on both server and client
+- Fallback to full-mesh when no SFU is configured
+- SFU signaling contracts in `@realtimesdk/core` (transport/produce/consume request-response events)
+- A client SFU participant module in `@realtimesdk/client` (`setupSfuCall`, `publishSfuTrack`, `consumeSfuProducer`) that connects over mediasoup WebRTC transports and auto-wires into `startGroupCall`/`joinCall` for SFU-mode rooms
+
+Version 0.7 moves large-room group media from a full-mesh topology to a
+selective-forwarding unit (SFU). Each participant sends their media to the SFU,
+which selectively forwards it to the other participants, so group calls scale
+beyond what a full mesh can support. The realtime server continues to own
+signaling, room authorization, and call lifecycle; the SFU forwards media only
+and remains the application's infrastructure to provision and configure.
+Full-mesh stays the default for small rooms and for deployments without an SFU,
+keeping the platform's bring-your-own-infrastructure philosophy.
+
+The SFU is built on **mediasoup**, used as a library rather than a platform.
+mediasoup provides the WebRTC media-routing primitives (Worker, Router,
+Transport, Producer, Consumer) but no signaling, authentication, or client SDK,
+so the platform keeps owning the protocol, room authorization, call lifecycle,
+and browser client. Package responsibilities split as follows:
+
+- `@realtimesdk/sfu` — wraps one or more mediasoup Workers, owns one Router per
+  room, and exposes publish/subscribe to the realtime server.
+- `@realtimesdk/server` — a thin coordinator that assigns a room to an SFU and
+  hands clients their publish/subscribe endpoints; signaling and authorization
+  stay in the server.
+- `@realtimesdk/client` — an SFU participant module that connects to the
+  assigned SFU over a mediasoup WebRTC Transport, publishes local media via a
+  Producer, and receives forwarded media via a Consumer.
+
+This keeps `@realtimesdk/server` free of the media router's heavy native
+dependencies, allows the SFU to be provisioned and scaled independently, and
+leaves room for running multiple SFU nodes behind a single signaling server.
  
 ### Later
 

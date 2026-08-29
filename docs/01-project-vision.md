@@ -93,6 +93,7 @@ The CLI should detect the framework and generate the appropriate integration.
 - One-to-one video calls
 - Group audio calls
 - Group video calls
+- Group calls that scale beyond small rooms via a media-routing node (SFU)
 - In-call participant join/leave
 - Call accept/reject
 - Hang up
@@ -111,6 +112,13 @@ The CLI should detect the framework and generate the appropriate integration.
 - STUN configuration
 - TURN configuration
 - Connection failure/recovery
+
+### Media Routing (SFU)
+- Self-hosted media-routing node for large group calls, shipped as `@realtimesdk/sfu`
+- Built on mediasoup as a library (media routing only, no signaling or client SDK)
+- Hub-and-spoke media topology as a fallback from full-mesh
+- Signaling remains owned by the realtime server; the SFU forwards media only
+- Application-provided SFU configuration, consistent with bring-your-own-infra
 
 ### Server
 - WebSocket/realtime transport
@@ -149,6 +157,12 @@ Version 0.1 targets a browser client and a single Node.js server. Runtime state
 is held in memory. The server architecture should leave room for future shared
 state and pub/sub adapters, but Redis or another scaling solution is not part
 of this release.
+
+Version 0.7 introduces a self-hosted media-routing node (SFU) so group calls
+scale past full-mesh limits. The realtime server remains a single Node.js
+process that owns signaling and authorization; the SFU is an additional media
+node the application provisions and configures. Media-routing is additive —
+full-mesh remains the default when no SFU is configured.
 
 The initial packages are TypeScript-based and published as ESM. CommonJS,
 React Native, and server-side client support are deferred until concrete

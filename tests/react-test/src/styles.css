@@ -26,3 +26,6 @@ button.danger { color: #fff; background: #bd4c59; }
 .call video { width: 100%; max-height: 280px; margin: 8px 0; border-radius: 8px; background: #060b14; }
 code { color: #b9c5df; word-break: break-all; }
 @media (max-width: 540px) { main { margin: 24px auto; } .call-controls > * { width: 100%; } }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; color: #08111f; font-size: .75rem; font-weight: 700; background: #8ba7ff; }
+.badge-mesh { color: #e7eaf0; background: #59657b; }
+.sfu-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 12px; border: 1px solid #46546f; border-radius: 8px; color: #e7eaf0; background: #0f131b; cursor: pointer; }

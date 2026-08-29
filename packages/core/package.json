@@ -1,6 +1,6 @@
 {
   "name": "@realtimesdk/core",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Shared protocol contracts, event types, and helpers for the realtimesdk platform.",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 ## Public Preview
 
-# Realtime Platform (v0.6)
+# Realtime Platform (v0.7)
 
 Framework-independent realtime rooms and messaging for browser clients and one Node.js server.
 
@@ -12,7 +12,7 @@ Framework-independent realtime rooms and messaging for browser clients and one N
 [![npm (scoped)](https://img.shields.io/npm/v/@realtimesdk/next?label=%40realtimesdk%2Fnext)](https://www.npmjs.com/package/@realtimesdk/next)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-## v0.6 capabilities
+## v0.7 capabilities
 
 - Room-scoped online/offline presence, including a presence snapshot on join
 - Typing start/stop events
@@ -23,12 +23,14 @@ Framework-independent realtime rooms and messaging for browser clients and one N
 - One-to-one browser audio calls, including accept, reject, hangup, ringing timeout, and disconnect handling
 - One-to-one browser video calls and in-call screen sharing
 - Group audio and video calls over a full-mesh peer topology, with in-call join/leave and group screen sharing
+- Large-room group audio/video calls over a selective-forwarding unit (SFU) media topology, for rooms too large for full-mesh
 - Application-provided STUN/TURN (`iceServers`) configuration; media remains peer-to-peer
 
 ## Packages
 
 - `@realtimesdk/core` – protocol contracts and shared helpers
 - `@realtimesdk/server` – Socket.IO server with authentication and room authorization hooks
+- `@realtimesdk/sfu` – self-hosted media-routing node (SFU) for large group calls, built on mediasoup
 - `@realtimesdk/client` – browser client SDK
 - `@realtimesdk/react` – thin React bindings over the client SDK
 - `@realtimesdk/express` – Express HTTP server adapter
@@ -138,7 +140,7 @@ During an active call, use `startScreenShare(call.id)` and `stopScreenShare(call
 `startCall`, `acceptCall`, `sendOffer`, `sendAnswer`, and `sendIceCandidate`
 are also available for applications that manage their own `RTCPeerConnection`.
 
-## Group calls (v0.6)
+## Group calls (v0.7)
 
 Group calls are room-scoped and ring every other authorized member of the
 room instead of a single peer. Each participant joins or leaves independently;
@@ -156,6 +158,20 @@ await realtime.leaveCall(call.id);
 Media is exchanged over a full-mesh peer topology — the server relays signaling
 only and never receives the media stream. Screen sharing during a group call
 uses `startScreenShare(call.id)` / `stopScreenShare(call.id)`.
+
+For large rooms, a v0.7 SFU media node can be attached so group media flows
+through a central forwarding unit instead of a full mesh. The realtime server
+continues to own signaling and room authorization; the SFU only forwards media
+streams. Applications bring their own self-hosted SFU and configure it on the
+server and client.
+
+## SFU (v0.7)
+
+The SFU ships as a separate `@realtimesdk/sfu` package built on mediasoup,
+used as a library. It is an application-provisioned media-routing node: the
+realtime server coordinates rooms and hands clients their publish/subscribe
+endpoints, while the SFU forwards media only. Full-mesh remains the default
+for small rooms and when no SFU is configured. In development; not yet on npm.
 
 For applications that manage their own `RTCPeerConnection`s, `startGroupCallRaw`
 and `joinCallRaw` start or join a group call without acquiring media, and
@@ -190,7 +206,7 @@ Two test layers:
   bun run test:smoke
   ```
 
-  Runs `tests/smoke/v0.1-*` through `tests/smoke/v0.5-*` (messaging, presence, typing, calls, video, Express adapter, Next.js adapter).
+  Runs `tests/smoke/v0.1-*` through `tests/smoke/v0.7-*` (messaging, presence, typing, calls, video, Express and Next.js adapters, group calls, and SFU routing). The SFU smoke test runs under Node.js (mediasoup does not support bun).
 
 - **Public-registry smoke test** — installs the packages from npmjs.org into `tests/smoke/public-registry/` and exercises them end-to-end. Use this to verify a freshly published release without workspace resolution.
 

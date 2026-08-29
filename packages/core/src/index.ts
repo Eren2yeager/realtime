@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = "0.6";
+export const PROTOCOL_VERSION = "0.7";
 
 export type Metadata = Record<string, unknown>;
 
@@ -7,7 +7,7 @@ export type AuthenticatedUser = {
   metadata?: Metadata;
 };
 
-export type RoomAction = "join" | "send-message" | "typing" | "call" | "webrtc";
+export type RoomAction = "join" | "send-message" | "typing" | "call" | "webrtc" | "sfu";
 
 export type JoinRoomInput = { roomId: string };
 export type SendMessageInput = { roomId: string; content: string; clientMessageId?: string };
@@ -47,10 +47,11 @@ export type CallRejectedEvent = { callId: string; roomId: string; recipientId: s
 export type CallEndReason = "hangup" | "rejected" | "timeout" | "disconnected" | "room-left";
 export type CallEndedEvent = { callId: string; roomId: string; endedById?: string; reason: CallEndReason };
 
+export type SfuMediaMode = "mesh" | "sfu";
 export type GroupCallStartInput = { roomId: string; mediaType?: CallMediaType };
-export type GroupCallResult = { callId: string; roomId: string; participantIds: string[]; selfId: string };
-export type GroupCallJoinResult = { callId: string; participantIds: string[]; selfId: string };
-export type GroupCallIncomingEvent = { callId: string; roomId: string; callerId: string; mediaType: CallMediaType; participantIds: string[]; selfId: string };
+export type GroupCallResult = { callId: string; roomId: string; participantIds: string[]; selfId: string; mediaMode: SfuMediaMode };
+export type GroupCallJoinResult = { callId: string; participantIds: string[]; selfId: string; mediaMode: SfuMediaMode };
+export type GroupCallIncomingEvent = { callId: string; roomId: string; callerId: string; mediaType: CallMediaType; participantIds: string[]; selfId: string; mediaMode: SfuMediaMode };
 export type GroupCallParticipantEvent = { callId: string; roomId: string; participantId: string; participantIds: string[]; selfId: string };
 
 export type WebRtcSessionDescription = { type: "offer" | "answer"; sdp: string };
@@ -69,6 +70,54 @@ export type GroupWebRtcIceCandidateInput = { callId: string; targetId: string; c
 export type GroupWebRtcDescriptionEvent = { callId: string; roomId: string; senderId: string; targetId: string; description: WebRtcSessionDescription };
 export type GroupWebRtcIceCandidateEvent = { callId: string; roomId: string; senderId: string; targetId: string; candidate: WebRtcIceCandidate };
 
+/** mediasoup-compatible WebRTC transport parameters, relayed by the realtime server. */
+export type SfuIceParameters = {
+  usernameFragment: string;
+  password: string;
+  iceLite?: boolean;
+};
+export type SfuIceCandidate = {
+  foundation: string;
+  protocol: "udp" | "tcp";
+  ip: string;
+  address: string;
+  port: number;
+  type: "host" | "srflx" | "prflx" | "relay";
+  priority: number;
+  tcpType?: "passive";
+};
+export type SfuDtlsParameters = {
+  role?: "auto" | "client" | "server";
+  fingerprints: { algorithm: "sha-1" | "sha-224" | "sha-256" | "sha-384" | "sha-512"; value: string }[];
+};
+/** Opaque to the protocol layer; the SFU and client interpret these as mediasoup RTP types. */
+export type SfuRtpCapabilities = Record<string, unknown>;
+export type SfuRtpParameters = Record<string, unknown>;
+
+export type SfuCallInput = { callId: string };
+export type SfuRtpCapabilitiesInput = { callId: string };
+export type SfuRtpCapabilitiesResult = { rtpCapabilities: SfuRtpCapabilities };
+export type SfuTransportDirection = "send" | "recv";
+export type SfuCreateTransportInput = { callId: string; direction: SfuTransportDirection; appData?: Record<string, unknown> };
+export type SfuCreatedTransport = {
+  transportId: string;
+  iceParameters: SfuIceParameters;
+  iceCandidates: SfuIceCandidate[];
+  dtlsParameters: SfuDtlsParameters;
+};
+export type SfuConnectTransportInput = { callId: string; transportId: string; dtlsParameters: SfuDtlsParameters };
+export type SfuProduceInput = { callId: string; transportId: string; kind: "audio" | "video"; rtpParameters: SfuRtpParameters; appData?: Record<string, unknown> };
+export type SfuProducerResult = { producerId: string; kind: "audio" | "video" };
+export type SfuConsumeInput = { callId: string; transportId: string; producerId: string; rtpCapabilities: SfuRtpCapabilities };
+export type SfuConsumerResult = { consumerId: string; producerId: string; kind: "audio" | "video"; rtpParameters: SfuRtpParameters; paused: boolean };
+export type SfuResumeConsumerInput = { callId: string; consumerId: string };
+export type SfuCloseTransportInput = { callId: string; transportId: string };
+export type SfuCloseProducerInput = { callId: string; producerId: string };
+export type SfuCloseConsumerInput = { callId: string; consumerId: string };
+
+export type SfuProducerAddedEvent = { callId: string; roomId: string; producerId: string; peerId: string; kind: "audio" | "video"; appData?: Record<string, unknown> };
+export type SfuProducerRemovedEvent = { callId: string; roomId: string; producerId: string; peerId: string };
+
 export type RealtimeErrorCode =
   | "AUTHENTICATION_FAILED"
   | "UNAUTHORIZED"
@@ -77,6 +126,8 @@ export type RealtimeErrorCode =
   | "CALL_NOT_FOUND"
   | "CALL_INVALID_STATE"
   | "CALL_UNAVAILABLE"
+  | "SFU_UNAVAILABLE"
+  | "SFU_ERROR"
   | "PROTOCOL_MISMATCH"
   | "INTERNAL_ERROR";
 
@@ -102,6 +153,15 @@ export type ClientToServerEvents = {
   "group:webrtc:offer": (input: GroupWebRtcDescriptionInput, ack: (result: Result<{ callId: string }>) => void) => void;
   "group:webrtc:answer": (input: GroupWebRtcDescriptionInput, ack: (result: Result<{ callId: string }>) => void) => void;
   "group:webrtc:ice-candidate": (input: GroupWebRtcIceCandidateInput, ack: (result: Result<{ callId: string }>) => void) => void;
+  "sfu:rtp-capabilities": (input: SfuRtpCapabilitiesInput, ack: (result: Result<SfuRtpCapabilitiesResult>) => void) => void;
+  "sfu:create-transport": (input: SfuCreateTransportInput, ack: (result: Result<SfuCreatedTransport>) => void) => void;
+  "sfu:connect-transport": (input: SfuConnectTransportInput, ack: (result: Result<{ transportId: string }>) => void) => void;
+  "sfu:produce": (input: SfuProduceInput, ack: (result: Result<SfuProducerResult>) => void) => void;
+  "sfu:consume": (input: SfuConsumeInput, ack: (result: Result<SfuConsumerResult>) => void) => void;
+  "sfu:resume-consumer": (input: SfuResumeConsumerInput, ack: (result: Result<{ consumerId: string }>) => void) => void;
+  "sfu:close-transport": (input: SfuCloseTransportInput, ack: (result: Result<{ transportId: string }>) => void) => void;
+  "sfu:close-producer": (input: SfuCloseProducerInput, ack: (result: Result<{ producerId: string }>) => void) => void;
+  "sfu:close-consumer": (input: SfuCloseConsumerInput, ack: (result: Result<{ consumerId: string }>) => void) => void;
 };
 
 export type ServerToClientEvents = {
@@ -127,6 +187,8 @@ export type ServerToClientEvents = {
   "group:webrtc:offer": (payload: GroupWebRtcDescriptionEvent) => void;
   "group:webrtc:answer": (payload: GroupWebRtcDescriptionEvent) => void;
   "group:webrtc:ice-candidate": (payload: GroupWebRtcIceCandidateEvent) => void;
+  "sfu:producer-added": (payload: SfuProducerAddedEvent) => void;
+  "sfu:producer-removed": (payload: SfuProducerRemovedEvent) => void;
   error: (error: RealtimeError) => void;
 };
 

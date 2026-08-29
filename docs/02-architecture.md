@@ -9,15 +9,18 @@
               |                                   |
           Client Layer                        Server Layer
               |                                   |
-       +------+-------+                    +------+-------+
-       |              |                    |              |
-      Core          Framework           Transport      WebRTC
-      SDK           Adapters              Layer        Signaling
-       |              |                    |              |
-       |        React / Next.js /          |         Offer/Answer
-       |        Vanilla JS                |         ICE Candidates
-       |                                   |
-       +-------------------+---------------+
+      +------+-------+                    +------+-------+
+      |              |                    |              |
+     Core          Framework           Transport      WebRTC
+     SDK           Adapters              Layer        Signaling
+      |              |                    |              |
+      |        React / Next.js /          |         Offer/Answer
+      |        Vanilla JS                |         ICE Candidates
+      |              |                    |
+      |              |              SFU Media Node
+      |              |           (@realtimesdk/sfu)
+      |              |                 |
+       +------------------+-------------+---------------+
                            |
                        Event API
                            |
@@ -34,6 +37,7 @@ Proposed package family:
 @yourorg/realtime-core       Shared protocol, event definitions, and types
 @yourorg/realtime-client
 @yourorg/realtime-server
+@yourorg/realtime-sfu        Self-hosted media-routing node (SFU) for large group calls
 @yourorg/realtime-react
 @yourorg/realtime-next
 @yourorg/realtime-express
@@ -151,9 +155,25 @@ The realtime server normally handles signaling, not the actual media stream.
 One-to-one calls use the private room's single peer. Group calls reuse the same
 signaling flow in a full-mesh topology: every participant exchanges
 offer/answer and ICE candidates with every other participant, while the realtime
-server relays signaling only. A dedicated media server (SFU) is not part of
-version 0.6; mesh keeps the server out of the media path and is appropriate
-for small-to-medium rooms.
+server relays signaling only. Mesh keeps the server out of the media path and
+is appropriate for small-to-medium rooms.
+
+For large rooms, version 0.7 adds an optional media-routing node (SFU). When
+configured, group media moves from a full mesh to a hub-and-spoke topology:
+each participant sends their media to the SFU, and the SFU selectively forwards
+it to the other participants. The realtime server still owns signaling, room
+authorization, and call lifecycle; the SFU only forwards media. The application
+provisions and configures its own self-hosted SFU, keeping with the platform's
+bring-your-own-infrastructure philosophy. Full-mesh remains the default when no
+SFU is configured, so small rooms keep zero additional infrastructure.
+
+The SFU node lives in its own `@realtimesdk/sfu` package and is built on
+mediasoup, used as a library. mediasoup supplies the WebRTC media-routing
+primitives (Worker, Router, Transport, Producer, Consumer) but no signaling or
+client SDK, so the realtime server retains signaling, room authorization, and
+call lifecycle, and the browser client retains its own call state and media
+handling. The SFU exposes publish/subscribe to the realtime server, which
+assigns rooms to the SFU and relays publish/subscribe endpoints to clients.
 
 ## 8. STUN and TURN
 

@@ -1,6 +1,6 @@
 {
   "name": "@realtimesdk/react",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Thin React bindings over the realtimesdk browser client SDK.",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,7 +25,7 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "dependencies": { "@realtimesdk/client": "^0.6.0", "@realtimesdk/core": "^0.6.0" },
+  "dependencies": { "@realtimesdk/client": "^0.7.0", "@realtimesdk/core": "^0.7.0" },
   "peerDependencies": { "react": "^18.0.0 || ^19.0.0" },
   "devDependencies": { "@types/react": "^19.0.3", "typescript": "^5.7.3" }
 }

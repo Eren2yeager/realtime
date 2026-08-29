@@ -19,7 +19,15 @@ import {
   type Result,
   type RoomAction,
   type SendMessageInput,
-  type ServerToClientEvents
+  type ServerToClientEvents,
+  type SfuDtlsParameters,
+  type SfuIceCandidate,
+  type SfuIceParameters,
+  type SfuMediaMode,
+  type SfuProducerAddedEvent,
+  type SfuProducerRemovedEvent,
+  type SfuRtpCapabilities,
+  type SfuRtpParameters
 } from "@realtimesdk/core";
 
 type SocketData = { user: AuthenticatedUser; protocolAccepted: boolean };
@@ -42,13 +50,51 @@ type ActiveGroupCall = {
   callerSocketId: string;
   callerId: string;
   mediaType: CallMediaType;
+  mediaMode: SfuMediaMode;
   state: "ringing" | "active";
   /** userId -> socketId of participants who have joined (the caller is a participant from the start). */
   participants: Map<string, string>;
   /** userId -> socketId of members still being rung. */
   invitees: Map<string, string>;
+  /** Per-participant SFU media state (userId -> transports and producers), populated for SFU-mode calls. */
+  sfuMedia?: Map<string, SfuParticipantMedia>;
   timeout: ReturnType<typeof setTimeout>;
 };
+
+export type SfuTransportDirection = "send" | "recv";
+export type SfuTransportParams = {
+  transportId: string;
+  iceParameters: SfuIceParameters;
+  iceCandidates: SfuIceCandidate[];
+  dtlsParameters: SfuDtlsParameters;
+};
+
+/** The SFU room surface the coordinator uses. Satisfied structurally by @realtimesdk/sfu's SfuRoom. */
+export type SfuRoomHandle = {
+  readonly roomId: string;
+  readonly rtpCapabilities: SfuRtpCapabilities;
+  createTransport(input: { direction: SfuTransportDirection; appData?: Record<string, unknown> }): Promise<SfuTransportParams>;
+  connectTransport(transportId: string, dtlsParameters: SfuDtlsParameters): Promise<void>;
+  produce(input: { transportId: string; kind: "audio" | "video"; rtpParameters: SfuRtpParameters; appData?: Record<string, unknown> }): Promise<{ id: string; kind: "audio" | "video"; appData?: Record<string, unknown> }>;
+  consume(input: { transportId: string; producerId: string; rtpCapabilities: SfuRtpCapabilities }): Promise<{ id: string; producerId: string; kind: "audio" | "video"; rtpParameters: SfuRtpParameters; paused: boolean }>;
+  resumeConsumer(consumerId: string): Promise<void>;
+  closeProducer(producerId: string): void;
+  closeConsumer(consumerId: string): void;
+  closeTransport(transportId: string): Promise<void>;
+  close(): void;
+};
+
+/** The SFU node surface the coordinator uses. Satisfied structurally by @realtimesdk/sfu's SfuNode. */
+export type SfuNodeHandle = {
+  start(): Promise<void>;
+  room(roomId: string): SfuRoomHandle | undefined;
+  createRoom(roomId: string): Promise<SfuRoomHandle>;
+  closeRoom(roomId: string): boolean;
+  close(): Promise<void>;
+};
+
+type SfuParticipantMedia = { transports: Set<string>; producers: Map<string, SfuProducerInfo> };
+type SfuProducerInfo = { kind: "audio" | "video"; appData?: Record<string, unknown> };
 
 export type RealtimeServerOptions = {
   port?: number;
@@ -57,16 +103,23 @@ export type RealtimeServerOptions = {
   authorizeRoom?: (context: { user: AuthenticatedUser; roomId: string; action: RoomAction }) => Promise<boolean> | boolean;
   /** Time an unanswered call rings before it ends. Defaults to 30 seconds. */
   callTimeoutMs?: number;
+  /** Optional SFU media-routing node. When set, group calls route media through it where useSfuForRoom allows. */
+  sfu?: SfuNodeHandle;
+  /** Decides whether a room's group calls use the SFU. Defaults to true whenever an SFU is configured. */
+  useSfuForRoom?: (roomId: string) => boolean;
 };
 
 const invalid = (message: string) => errorResult("INVALID_PAYLOAD", message);
 const validRoom = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0 && value.length <= 200;
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : "Unknown SFU error.");
 
 export class RealtimeServer {
   readonly io: Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>;
   private httpServer?: HttpServer;
   private readonly calls = new Map<string, ActiveCall>();
   private readonly groupCalls = new Map<string, ActiveGroupCall>();
+  /** Number of active SFU-mode group calls per realtime room, so SFU Routers are ref-counted. */
+  private readonly sfuRooms = new Map<string, number>();
 
   constructor(private readonly options: RealtimeServerOptions) {
     this.io = new Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>({ cors: options.cors });
@@ -267,6 +320,14 @@ export class RealtimeServer {
           participantIds.push(invitee.data.user.userId);
         }
       }
+      const mediaMode = this.mediaModeFor(input.roomId);
+      if (mediaMode === "sfu") {
+        try {
+          await this.ensureSfuRoom(input.roomId);
+        } catch (error) {
+          return ack(errorResult("SFU_UNAVAILABLE", errorMessage(error)));
+        }
+      }
       const callId = randomUUID();
       const call: ActiveGroupCall = {
         id: callId,
@@ -274,18 +335,19 @@ export class RealtimeServer {
         callerSocketId: socket.id,
         callerId: socket.data.user.userId,
         mediaType: input.mediaType ?? "audio",
+        mediaMode,
         state: "ringing",
         participants: new Map([[socket.data.user.userId, socket.id]]),
         invitees: inviteeMap,
         timeout: setTimeout(() => this.endGroupCall(callId, "timeout"), this.options.callTimeoutMs ?? 30_000)
       };
       this.groupCalls.set(callId, call);
-      const incoming: GroupCallIncomingEvent = { callId, roomId: call.roomId, callerId: call.callerId, mediaType: call.mediaType, participantIds, selfId: "" };
+      const incoming: GroupCallIncomingEvent = { callId, roomId: call.roomId, callerId: call.callerId, mediaType: call.mediaType, participantIds, selfId: "", mediaMode };
       for (const [userId, socketId] of inviteeMap) {
         const inviteeSocket = this.io.sockets.sockets.get(socketId);
         inviteeSocket?.emit("group:call:incoming", { ...incoming, selfId: userId });
       }
-      ack({ ok: true, data: { callId, roomId: call.roomId, participantIds, selfId: socket.data.user.userId } as GroupCallResult });
+      ack({ ok: true, data: { callId, roomId: call.roomId, participantIds, selfId: socket.data.user.userId, mediaMode } as GroupCallResult });
     });
 
     socket.on("call:join", async (input, ack) => {
@@ -304,7 +366,15 @@ export class RealtimeServer {
         if (participantId === socket.data.user.userId) continue;
         this.io.sockets.sockets.get(socketId)?.emit("group:call:participant-joined", { ...participantJoined, selfId: participantId });
       }
-      ack({ ok: true, data: { callId: call.id, participantIds, selfId: socket.data.user.userId } as GroupCallJoinResult });
+      if (call.mediaMode === "sfu") {
+        for (const [participantId, media] of call.sfuMedia ?? []) {
+          if (participantId === socket.data.user.userId) continue;
+          for (const [producerId, info] of media.producers) {
+            socket.emit("sfu:producer-added", { callId: call.id, roomId: call.roomId, producerId, peerId: participantId, kind: info.kind, appData: info.appData });
+          }
+        }
+      }
+      ack({ ok: true, data: { callId: call.id, participantIds, selfId: socket.data.user.userId, mediaMode: call.mediaMode } as GroupCallJoinResult });
     });
 
     socket.on("call:leave", async (input, ack) => {
@@ -325,6 +395,119 @@ export class RealtimeServer {
       if (!targetSocketId) return ack(errorResult("UNAUTHORIZED", "The signaling target is not a participant in this call."));
       this.io.to(targetSocketId).emit("group:webrtc:ice-candidate", { callId: call.id, roomId: call.roomId, senderId: socket.data.user.userId, targetId: input.targetId, candidate: input.candidate });
       ack({ ok: true, data: { callId: call.id } });
+    });
+
+    socket.on("sfu:rtp-capabilities", async (input, ack) => {
+      const resolved = await this.sfuCall(socket, input, ack);
+      if (!resolved) return;
+      ack({ ok: true, data: { rtpCapabilities: resolved.room.rtpCapabilities } });
+    });
+
+    socket.on("sfu:create-transport", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validCallId(input, ack) || !this.validSfuDirection(input, ack)) return;
+      const resolved = await this.sfuCall(socket, input, ack);
+      if (!resolved) return;
+      try {
+        const transport = await resolved.room.createTransport({ direction: input.direction, appData: input.appData });
+        this.participantSfu(resolved.call, socket.data.user.userId).transports.add(transport.transportId);
+        ack({ ok: true, data: transport });
+      } catch (error) {
+        ack(errorResult("SFU_ERROR", errorMessage(error)));
+      }
+    });
+
+    socket.on("sfu:connect-transport", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validSfuConnect(input, ack)) return;
+      const resolved = await this.sfuCall(socket, input, ack);
+      if (!resolved) return;
+      try {
+        await resolved.room.connectTransport(input.transportId, input.dtlsParameters);
+        ack({ ok: true, data: { transportId: input.transportId } });
+      } catch (error) {
+        ack(errorResult("SFU_ERROR", errorMessage(error)));
+      }
+    });
+
+    socket.on("sfu:produce", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validSfuProduce(input, ack)) return;
+      const resolved = await this.sfuCall(socket, input, ack);
+      if (!resolved) return;
+      const { call, room } = resolved;
+      try {
+        const producer = await room.produce({ transportId: input.transportId, kind: input.kind, rtpParameters: input.rtpParameters, appData: input.appData });
+        this.participantSfu(call, socket.data.user.userId).producers.set(producer.id, { kind: producer.kind, appData: producer.appData });
+        const event: SfuProducerAddedEvent = { callId: call.id, roomId: call.roomId, producerId: producer.id, peerId: socket.data.user.userId, kind: producer.kind, appData: producer.appData };
+        for (const [participantId, socketId] of call.participants) {
+          if (participantId === socket.data.user.userId) continue;
+          this.io.sockets.sockets.get(socketId)?.emit("sfu:producer-added", event);
+        }
+        ack({ ok: true, data: { producerId: producer.id, kind: producer.kind } });
+      } catch (error) {
+        ack(errorResult("SFU_ERROR", errorMessage(error)));
+      }
+    });
+
+    socket.on("sfu:consume", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validSfuConsume(input, ack)) return;
+      const resolved = await this.sfuCall(socket, input, ack);
+      if (!resolved) return;
+      try {
+        const consumer = await resolved.room.consume({ transportId: input.transportId, producerId: input.producerId, rtpCapabilities: input.rtpCapabilities });
+        ack({ ok: true, data: { consumerId: consumer.id, producerId: consumer.producerId, kind: consumer.kind, rtpParameters: consumer.rtpParameters, paused: consumer.paused } });
+      } catch (error) {
+        ack(errorResult("SFU_ERROR", errorMessage(error)));
+      }
+    });
+
+    socket.on("sfu:resume-consumer", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validSfuConsumer(input, ack)) return;
+      const resolved = await this.sfuCall(socket, input, ack);
+      if (!resolved) return;
+      try {
+        await resolved.room.resumeConsumer(input.consumerId);
+        ack({ ok: true, data: { consumerId: input.consumerId } });
+      } catch (error) {
+        ack(errorResult("SFU_ERROR", errorMessage(error)));
+      }
+    });
+
+    socket.on("sfu:close-transport", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validSfuTransport(input, ack)) return;
+      const resolved = await this.sfuCall(socket, input, ack);
+      if (!resolved) return;
+      try {
+        await resolved.room.closeTransport(input.transportId);
+        ack({ ok: true, data: { transportId: input.transportId } });
+      } catch (error) {
+        ack(errorResult("SFU_ERROR", errorMessage(error)));
+      }
+    });
+
+    socket.on("sfu:close-producer", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validSfuProducer(input, ack)) return;
+      const resolved = await this.sfuCall(socket, input, ack);
+      if (!resolved) return;
+      const { call, room } = resolved;
+      room.closeProducer(input.producerId);
+      call.sfuMedia?.get(socket.data.user.userId)?.producers.delete(input.producerId);
+      const event: SfuProducerRemovedEvent = { callId: call.id, roomId: call.roomId, producerId: input.producerId, peerId: socket.data.user.userId };
+      for (const [participantId, socketId] of call.participants) {
+        if (participantId === socket.data.user.userId) continue;
+        this.io.sockets.sockets.get(socketId)?.emit("sfu:producer-removed", event);
+      }
+      ack({ ok: true, data: { producerId: input.producerId } });
+    });
+
+    socket.on("sfu:close-consumer", async (input, ack) => {
+      if (!this.ready(socket, ack) || !this.validSfuConsumer(input, ack)) return;
+      const resolved = await this.sfuCall(socket, input, ack);
+      if (!resolved) return;
+      try {
+        resolved.room.closeConsumer(input.consumerId);
+        ack({ ok: true, data: { consumerId: input.consumerId } });
+      } catch (error) {
+        ack(errorResult("SFU_ERROR", errorMessage(error)));
+      }
     });
 
     socket.on("webrtc:offer", async (input, ack) => this.relayDescription(socket, input, ack, "webrtc:offer"));
@@ -410,6 +593,55 @@ export class RealtimeServer {
     return this.validCandidate(input, ack);
   }
 
+  private validSfuDirection<T>(input: { direction?: unknown }, ack: (result: Result<T>) => void): input is { direction: SfuTransportDirection } {
+    if (input.direction === "send" || input.direction === "recv") return true;
+    ack(invalid("direction must be send or recv."));
+    return false;
+  }
+
+  private validSfuTransport<T, I extends { callId?: unknown; transportId?: unknown }>(input: I, ack: (result: Result<T>) => void): input is I & { callId: string; transportId: string } {
+    if (!this.validCallId(input, ack)) return false;
+    if (typeof input.transportId === "string" && input.transportId.length > 0 && input.transportId.length <= 200) return true;
+    ack(invalid("transportId must be a non-empty string no longer than 200 characters."));
+    return false;
+  }
+
+  private validSfuProducer<T>(input: { callId?: unknown; producerId?: unknown }, ack: (result: Result<T>) => void): input is { callId: string; producerId: string } {
+    if (!this.validCallId(input, ack)) return false;
+    if (typeof input.producerId === "string" && input.producerId.length > 0 && input.producerId.length <= 200) return true;
+    ack(invalid("producerId must be a non-empty string no longer than 200 characters."));
+    return false;
+  }
+
+  private validSfuConsumer<T>(input: { callId?: unknown; consumerId?: unknown }, ack: (result: Result<T>) => void): input is { callId: string; consumerId: string } {
+    if (!this.validCallId(input, ack)) return false;
+    if (typeof input.consumerId === "string" && input.consumerId.length > 0 && input.consumerId.length <= 200) return true;
+    ack(invalid("consumerId must be a non-empty string no longer than 200 characters."));
+    return false;
+  }
+
+  private validSfuConnect<T>(input: { callId?: unknown; transportId?: unknown; dtlsParameters?: unknown }, ack: (result: Result<T>) => void): input is { callId: string; transportId: string; dtlsParameters: SfuDtlsParameters } {
+    if (!this.validSfuTransport(input, ack)) return false;
+    const fingerprints = (input.dtlsParameters as { fingerprints?: unknown } | undefined)?.fingerprints;
+    if (typeof input.dtlsParameters === "object" && input.dtlsParameters !== null && Array.isArray(fingerprints) && fingerprints.length > 0) return true;
+    ack(invalid("dtlsParameters must contain a non-empty fingerprints array."));
+    return false;
+  }
+
+  private validSfuProduce<T>(input: { callId?: unknown; transportId?: unknown; kind?: unknown; rtpParameters?: unknown }, ack: (result: Result<T>) => void): input is { callId: string; transportId: string; kind: "audio" | "video"; rtpParameters: SfuRtpParameters; appData?: Record<string, unknown> } {
+    if (!this.validSfuTransport(input, ack)) return false;
+    if (input.kind !== "audio" && input.kind !== "video") { ack(invalid("kind must be audio or video.")); return false; }
+    if (typeof input.rtpParameters !== "object" || input.rtpParameters === null) { ack(invalid("rtpParameters must be an object.")); return false; }
+    return true;
+  }
+
+  private validSfuConsume<T>(input: { callId?: unknown; transportId?: unknown; producerId?: unknown; rtpCapabilities?: unknown }, ack: (result: Result<T>) => void): input is { callId: string; transportId: string; producerId: string; rtpCapabilities: SfuRtpCapabilities } {
+    if (!this.validSfuTransport(input, ack)) return false;
+    if (typeof input.producerId !== "string" || !input.producerId || input.producerId.length > 200) { ack(invalid("producerId must be a non-empty string no longer than 200 characters.")); return false; }
+    if (typeof input.rtpCapabilities !== "object" || input.rtpCapabilities === null) { ack(invalid("rtpCapabilities must be an object.")); return false; }
+    return true;
+  }
+
   private async announceDisconnect(socket: TypedSocket): Promise<void> {
     const rooms = [...socket.rooms].filter((roomId) => roomId !== socket.id);
     for (const roomId of rooms) {
@@ -440,6 +672,72 @@ export class RealtimeServer {
     if (!this.options.authorizeRoom || await this.options.authorizeRoom({ user: socket.data.user, roomId, action })) return true;
     ack(errorResult("UNAUTHORIZED", "You are not authorized for this room action."));
     return false;
+  }
+
+  /** Resolves an SFU action to the active group call and its media room, with authorization. */
+  private async sfuCall(socket: TypedSocket, input: { callId?: unknown }, ack: (result: Result<never>) => void): Promise<{ call: ActiveGroupCall; room: SfuRoomHandle } | undefined> {
+    const call = await this.groupCallFor(socket, input, ack, "participant");
+    if (!call) return undefined;
+    if (call.mediaMode !== "sfu") { ack(errorResult("SFU_UNAVAILABLE", "This call does not use the SFU media path.")); return undefined; }
+    if (!(await this.allowed(socket, call.roomId, "sfu", ack))) return undefined;
+    const room = this.options.sfu?.room(call.roomId);
+    if (!room) { ack(errorResult("SFU_UNAVAILABLE", "The SFU room for this call is not available.")); return undefined; }
+    return { call, room };
+  }
+
+  private participantSfu(call: ActiveGroupCall, userId: string): SfuParticipantMedia {
+    call.sfuMedia ??= new Map();
+    let media = call.sfuMedia.get(userId);
+    if (!media) {
+      media = { transports: new Set(), producers: new Map() };
+      call.sfuMedia.set(userId, media);
+    }
+    return media;
+  }
+
+  private mediaModeFor(roomId: string): SfuMediaMode {
+    if (!this.options.sfu) return "mesh";
+    if (this.options.useSfuForRoom && !this.options.useSfuForRoom(roomId)) return "mesh";
+    return "sfu";
+  }
+
+  /** Starts the SFU lazily, creates (or reuses) the room's Router, and ref-counts its usage. */
+  private async ensureSfuRoom(roomId: string): Promise<SfuRoomHandle> {
+    const sfu = this.options.sfu;
+    if (!sfu) throw new Error("No SFU is configured for this server.");
+    await sfu.start();
+    const count = this.sfuRooms.get(roomId) ?? 0;
+    if (count === 0) await sfu.createRoom(roomId);
+    this.sfuRooms.set(roomId, count + 1);
+    const room = sfu.room(roomId);
+    if (!room) throw new Error(`The SFU room for ${roomId} could not be created.`);
+    return room;
+  }
+
+  private releaseSfuRoom(roomId: string): void {
+    const count = (this.sfuRooms.get(roomId) ?? 1) - 1;
+    if (count <= 0) {
+      this.sfuRooms.delete(roomId);
+      this.options.sfu?.closeRoom(roomId);
+    } else {
+      this.sfuRooms.set(roomId, count);
+    }
+  }
+
+  /** Closes a departing participant's SFU producers and transports and notifies the remaining participants. */
+  private async closeParticipantSfuMedia(call: ActiveGroupCall, userId: string): Promise<void> {
+    const room = this.options.sfu?.room(call.roomId);
+    const media = call.sfuMedia?.get(userId);
+    call.sfuMedia?.delete(userId);
+    if (!room || !media) return;
+    for (const producerId of media.producers.keys()) {
+      room.closeProducer(producerId);
+      const event: SfuProducerRemovedEvent = { callId: call.id, roomId: call.roomId, producerId, peerId: userId };
+      for (const [participantId, socketId] of call.participants) {
+        this.io.sockets.sockets.get(socketId)?.emit("sfu:producer-removed", event);
+      }
+    }
+    for (const transportId of media.transports) await room.closeTransport(transportId);
   }
 
   private async callFor<T>(socket: TypedSocket, input: { callId?: unknown }, ack: (result: Result<T>) => void, role: "caller" | "recipient" | "participant", state?: ActiveCall["state"]): Promise<ActiveCall | undefined> {
@@ -494,6 +792,7 @@ export class RealtimeServer {
     const wasParticipant = call.participants.delete(userId);
     const wasInvitee = call.invitees.delete(userId);
     if (!wasParticipant && !wasInvitee) return;
+    if (call.mediaMode === "sfu" && wasParticipant) void this.closeParticipantSfuMedia(call, userId);
     const participantIds = [...call.participants.keys()];
     for (const [participantId, socketId] of call.participants) {
       this.io.sockets.sockets.get(socketId)?.emit("group:call:participant-left", { callId: call.id, roomId: call.roomId, participantId: userId, participantIds, selfId: participantId });
@@ -527,6 +826,14 @@ export class RealtimeServer {
   private finishGroupCall(call: ActiveGroupCall, reason: CallEndReason, endedById?: string): void {
     if (!this.groupCalls.delete(call.id)) return;
     clearTimeout(call.timeout);
+    if (call.mediaMode === "sfu") {
+      const room = this.options.sfu?.room(call.roomId);
+      for (const media of call.sfuMedia?.values() ?? []) {
+        for (const producerId of media.producers.keys()) room?.closeProducer(producerId);
+        for (const transportId of media.transports) void room?.closeTransport(transportId);
+      }
+      this.releaseSfuRoom(call.roomId);
+    }
     const event = { callId: call.id, roomId: call.roomId, endedById, reason };
     const socketIds = new Set<string>([...call.participants.values(), ...call.invitees.values()]);
     for (const socketId of socketIds) this.io.to(socketId).emit("call:ended", event);

@@ -1,4 +1,5 @@
 import { io, type Socket, type ManagerOptions, type SocketOptions } from "socket.io-client";
+import { Device } from "mediasoup-client";
 import {
   PROTOCOL_VERSION,
   type CallAcceptedEvent,
@@ -20,6 +21,17 @@ import {
   type Result,
   type RoomPresenceEvent,
   type ServerToClientEvents,
+  type SfuConsumerResult,
+  type SfuCreatedTransport,
+  type SfuDtlsParameters,
+  type SfuIceCandidate,
+  type SfuIceParameters,
+  type SfuProducerAddedEvent,
+  type SfuProducerRemovedEvent,
+  type SfuProducerResult,
+  type SfuRtpCapabilities,
+  type SfuRtpCapabilitiesResult,
+  type SfuRtpParameters,
   type TypingEvent,
   type WebRtcIceCandidate,
   type WebRtcIceCandidateEvent,
@@ -55,6 +67,8 @@ type ClientEvents = {
   "group:webrtc:offer": (payload: GroupWebRtcDescriptionEvent) => void;
   "group:webrtc:answer": (payload: GroupWebRtcDescriptionEvent) => void;
   "group:webrtc:ice-candidate": (payload: GroupWebRtcIceCandidateEvent) => void;
+  "sfu:producer-added": (call: RealtimeCall, event: SfuProducerAddedEvent) => void;
+  "sfu:producer-removed": (call: RealtimeCall, event: SfuProducerRemovedEvent) => void;
 };
 type Listener<T extends keyof ClientEvents> = ClientEvents[T];
 
@@ -71,8 +85,54 @@ export type RealtimeCall = {
   localStream?: MediaStream;
   remoteStream?: MediaStream;
   remoteStreams?: Record<string, MediaStream>;
+  /** SFU screen-share streams keyed by remote peerId, kept separate from camera streams. */
+  screenStreams?: Record<string, MediaStream>;
   isScreenSharing?: boolean;
+  /** Which media path a group call uses. Mesh for full-mesh; sfu when routed through the media node. */
+  mediaMode?: "mesh" | "sfu";
 };
+
+/** The mediasoup-client surface the SDK uses. Satisfied structurally by mediasoup-client's Device. */
+export type SfuDeviceLike = {
+  rtpCapabilities: SfuRtpCapabilities;
+  load(input: { routerRtpCapabilities: SfuRtpCapabilities }): Promise<void>;
+  createSendTransport(params: SfuClientTransportParams): SfuTransportLike;
+  createRecvTransport(params: SfuClientTransportParams): SfuTransportLike;
+};
+
+/** Server transport params as mediasoup-client expects them. */
+export type SfuClientTransportParams = {
+  id: string;
+  iceParameters: SfuIceParameters;
+  iceCandidates: SfuIceCandidate[];
+  dtlsParameters: SfuDtlsParameters;
+};
+
+/** The mediasoup-client transport surface the SDK uses. Satisfied structurally by mediasoup-client's Transport. */
+export interface SfuTransportLike {
+  id: string;
+  on(event: "connect", handler: (data: { dtlsParameters: SfuDtlsParameters }, callback: () => void, errback: (error: Error) => void) => void): this;
+  on(event: "produce", handler: (data: { kind: "audio" | "video"; rtpParameters: SfuRtpParameters; appData: Record<string, unknown> }, callback: (data: { id: string }) => void, errback: (error: Error) => void) => void): this;
+  produce(input: { track: MediaStreamTrack; appData?: Record<string, unknown> }): Promise<SfuProducerLike>;
+  consume(input: { id: string; producerId: string; kind: "audio" | "video"; rtpParameters: SfuRtpParameters }): Promise<SfuConsumerLike>;
+  close(): void;
+}
+
+export type SfuProducerLike = {
+  id: string;
+  kind: "audio" | "video";
+  close(): void;
+};
+
+export type SfuConsumerLike = {
+  id: string;
+  kind: "audio" | "video";
+  track: MediaStreamTrack;
+  paused: boolean;
+  resume(): void | Promise<void>;
+  close(): void;
+};
+
 export type RealtimeClientOptions = Partial<ManagerOptions & SocketOptions> & {
   /** STUN/TURN servers supplied by the application; no provider is imposed. */
   iceServers?: IceServer[];
@@ -82,6 +142,10 @@ export type RealtimeClientOptions = Partial<ManagerOptions & SocketOptions> & {
   videoConstraints?: MediaStreamConstraints;
   /** Constraints used by startScreenShare. Defaults to sharing video without system audio. */
   screenShareConstraints?: DisplayMediaStreamOptions;
+  /** Overrides the mediasoup Device factory. Defaults to a real mediasoup-client Device. */
+  sfuDeviceFactory?: () => SfuDeviceLike;
+  /** Auto-consumes remote SFU producers as they are announced. Defaults to true; the raw APIs stay manual. */
+  sfuAutoConsume?: boolean;
 };
 type ManagedCall = RealtimeCall & {
   selfId?: string;
@@ -90,6 +154,23 @@ type ManagedCall = RealtimeCall & {
   connections?: Map<string, RTCPeerConnection>;
   pendingByPeer?: Map<string, WebRtcIceCandidate[]>;
   screenStream?: MediaStream;
+  sfu?: SfuCallMedia;
+  /** Server producerId -> producer info for the SFU path, including the owning peerId. */
+  sfuProducers?: Map<string, SfuProducerAddedEvent>;
+};
+type SfuCallMedia = {
+  device: SfuDeviceLike;
+  rtpCapabilities: SfuRtpCapabilities;
+  sendTransport?: SfuTransportLike;
+  recvTransport?: SfuTransportLike;
+  producers: Map<string, SfuProducerLike>;
+  consumers: Map<string, SfuConsumerLike>;
+  /** producerId -> consumer for producers consumed through the SDK. */
+  consumersByProducer: Map<string, SfuConsumerLike>;
+  /** producerIds already consumed, so repeated announcements do not duplicate consumers. */
+  consumedProducers: Set<string>;
+  /** Server producerId of the active screen-share track, if any. */
+  screenProducerId?: string;
 };
 
 export class RealtimeClient {
@@ -133,6 +214,8 @@ export class RealtimeClient {
     this.socket.on("group:webrtc:offer", (payload) => { this.emit("group:webrtc:offer", payload); void this.onGroupOffer(payload); });
     this.socket.on("group:webrtc:answer", (payload) => { this.emit("group:webrtc:answer", payload); void this.onGroupAnswer(payload); });
     this.socket.on("group:webrtc:ice-candidate", (payload) => { this.emit("group:webrtc:ice-candidate", payload); void this.onGroupIceCandidate(payload); });
+    this.socket.on("sfu:producer-added", (payload) => this.onSfuProducerAdded(payload));
+    this.socket.on("sfu:producer-removed", (payload) => this.onSfuProducerRemoved(payload));
     if (typeof window !== "undefined") {
       this.pageHideHandler = () => this.disconnect();
       window.addEventListener("pagehide", this.pageHideHandler);
@@ -249,14 +332,22 @@ export class RealtimeClient {
   /** Adds a display-video track to an active call and renegotiates the peer connection. */
   async startScreenShare(callId: string): Promise<MediaStream> {
     const call = this.requireCall(callId);
-    if (call.isGroup ? (!call.connections || call.connections.size === 0) : !call.connection) throw new Error("Screen sharing is available after the call connects.");
+    if (call.isGroup && call.mediaMode === "sfu") {
+      if (!call.sfu?.sendTransport) throw new Error("Screen sharing is available after the SFU call is set up.");
+    } else if (call.isGroup ? (!call.connections || call.connections.size === 0) : !call.connection) {
+      throw new Error("Screen sharing is available after the call connects.");
+    }
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia) throw new Error("Screen sharing requires browser display media devices.");
     const screenStream = await navigator.mediaDevices.getDisplayMedia(this.options.screenShareConstraints ?? { video: true, audio: false });
     const screenTrack = screenStream.getVideoTracks()[0];
     if (!screenTrack) { screenStream.getTracks().forEach((track) => track.stop()); throw new Error("No screen video track was selected."); }
     call.screenStream?.getTracks().forEach((track) => track.stop());
     call.screenStream = screenStream;
-    if (call.isGroup) {
+    if (call.isGroup && call.mediaMode === "sfu") {
+      if (call.sfu?.screenProducerId) await this.closeSfuProducer(call, call.sfu.screenProducerId);
+      const published = await this.publishSfuTrack(call.id, screenTrack, { source: "screen" });
+      if (call.sfu) call.sfu.screenProducerId = published.producerId;
+    } else if (call.isGroup) {
       for (const [peerId, connection] of call.connections ?? []) {
         const videoSender = connection.getSenders().find((sender) => sender.track?.kind === "video");
         if (videoSender) await videoSender.replaceTrack(screenTrack);
@@ -280,18 +371,24 @@ export class RealtimeClient {
     const screenStream = call.screenStream;
     if (!screenStream) return;
     call.screenStream = undefined;
-    const cameraTrack = call.localStream?.getVideoTracks()[0] ?? null;
-    if (call.isGroup) {
-      for (const [peerId, connection] of call.connections ?? []) {
-        const videoSender = connection.getSenders().find((sender) => sender.track?.kind === "video");
-        if (videoSender) await videoSender.replaceTrack(cameraTrack);
-        await this.renegotiatePeer(call, peerId, connection);
-      }
+    if (call.isGroup && call.mediaMode === "sfu") {
+      const producerId = call.sfu?.screenProducerId;
+      if (call.sfu) call.sfu.screenProducerId = undefined;
+      if (producerId) await this.closeSfuProducer(call, producerId);
     } else {
-      if (!call.connection) return;
-      const videoSender = call.connection.getSenders().find((sender) => sender.track?.kind === "video");
-      if (videoSender) await videoSender.replaceTrack(cameraTrack);
-      await this.renegotiate(call);
+      const cameraTrack = call.localStream?.getVideoTracks()[0] ?? null;
+      if (call.isGroup) {
+        for (const [peerId, connection] of call.connections ?? []) {
+          const videoSender = connection.getSenders().find((sender) => sender.track?.kind === "video");
+          if (videoSender) await videoSender.replaceTrack(cameraTrack);
+          await this.renegotiatePeer(call, peerId, connection);
+        }
+      } else {
+        if (!call.connection) return;
+        const videoSender = call.connection.getSenders().find((sender) => sender.track?.kind === "video");
+        if (videoSender) await videoSender.replaceTrack(cameraTrack);
+        await this.renegotiate(call);
+      }
     }
     screenStream.getTracks().forEach((track) => track.stop());
     this.emit("call:state", this.snapshot(call));
@@ -327,6 +424,11 @@ export class RealtimeClient {
       const call = await this.startGroupCallRaw(roomId, mediaType);
       const managed = this.calls.get(call.id)!;
       managed.localStream = localStream;
+      if (call.mediaMode === "sfu") {
+        await this.setupSfuCall(call.id);
+        await this.publishSfuStream(managed, localStream);
+        this.setCallState(managed, "active");
+      }
       this.emit("call:state", this.snapshot(managed));
       return this.snapshot(managed);
     } catch (error) {
@@ -341,7 +443,7 @@ export class RealtimeClient {
     this.selfId = result.selfId;
     const call: ManagedCall = {
       id: result.callId, roomId: result.roomId, isGroup: true, selfId: result.selfId, callerId: result.selfId,
-      participantIds: result.participantIds, mediaType, state: "ringing", pendingCandidates: []
+      participantIds: result.participantIds, mediaType, mediaMode: result.mediaMode, state: "ringing", pendingCandidates: []
     };
     this.calls.set(call.id, call);
     this.emit("call:state", this.snapshot(call));
@@ -356,6 +458,12 @@ export class RealtimeClient {
     try {
       const joined = await this.joinCallRaw(callId);
       const managed = this.calls.get(joined.id)!;
+      if (joined.mediaMode === "sfu") {
+        await this.setupSfuCall(callId);
+        await this.publishSfuStream(managed, call.localStream);
+        this.setCallState(managed, "active");
+        return this.snapshot(managed);
+      }
       for (const peer of managed.participantIds.filter((id) => id !== managed.selfId)) {
         const connection = this.groupConnection(managed, peer);
         try {
@@ -381,6 +489,7 @@ export class RealtimeClient {
     this.selfId = result.selfId;
     call.selfId = result.selfId;
     call.participantIds = result.participantIds;
+    call.mediaMode = result.mediaMode;
     this.setCallState(call, "connecting");
     return this.snapshot(call);
   }
@@ -408,6 +517,90 @@ export class RealtimeClient {
   sendGroupAnswer(callId: string, targetId: string, description: WebRtcSessionDescription): Promise<void> { return this.request("group:webrtc:answer", { callId, targetId, description }); }
   sendGroupIceCandidate(callId: string, targetId: string, candidate: WebRtcIceCandidate): Promise<void> { return this.request("group:webrtc:ice-candidate", { callId, targetId, candidate }); }
 
+  /** Prepares an SFU-mode group call: loads router capabilities and creates send/receive transports. */
+  async setupSfuCall(callId: string): Promise<RealtimeCall> {
+    const call = this.requireCall(callId);
+    if (!call.isGroup) throw new Error("SFU media is only available for group calls.");
+    if (call.mediaMode !== "sfu") throw new Error("This call does not use the SFU media path.");
+    if (call.sfu) return this.snapshot(call);
+    const capabilities = await this.request<SfuRtpCapabilitiesResult>("sfu:rtp-capabilities", { callId });
+    const device = (this.options.sfuDeviceFactory ?? (() => new Device()))();
+    await device.load({ routerRtpCapabilities: capabilities.rtpCapabilities });
+    const sendParams = await this.request<SfuCreatedTransport>("sfu:create-transport", { callId, direction: "send" });
+    const recvParams = await this.request<SfuCreatedTransport>("sfu:create-transport", { callId, direction: "recv" });
+    const sendTransport = device.createSendTransport(this.transportParams(sendParams));
+    const recvTransport = device.createRecvTransport(this.transportParams(recvParams));
+    this.bindSfuTransport(call, sendTransport);
+    this.bindSfuTransport(call, recvTransport);
+    call.sfu = { device, rtpCapabilities: capabilities.rtpCapabilities, sendTransport, recvTransport, producers: new Map(), consumers: new Map(), consumersByProducer: new Map(), consumedProducers: new Set() };
+    if (this.options.sfuAutoConsume !== false) {
+      await Promise.all([...(call.sfuProducers?.values() ?? [])].map((event) => this.autoConsumeSfuProducer(call, event.producerId)));
+    }
+    this.emit("call:state", this.snapshot(call));
+    return this.snapshot(call);
+  }
+
+  /** Publishes a local track to the SFU and returns the server producerId. */
+  async publishSfuTrack(callId: string, track: MediaStreamTrack, appData?: Record<string, unknown>): Promise<{ producerId: string }> {
+    const call = this.requireCall(callId);
+    if (!call.sfu?.sendTransport) throw new Error("Set up the SFU call before publishing. Call setupSfuCall first.");
+    const producer = await call.sfu.sendTransport.produce({ track, appData });
+    call.sfu.producers.set(producer.id, producer);
+    return { producerId: producer.id };
+  }
+
+  /** Subscribes to a remote producer and returns the consumed track. */
+  async consumeSfuProducer(callId: string, producerId: string): Promise<{ consumerId: string; track: MediaStreamTrack; kind: "audio" | "video"; peerId: string }> {
+    const call = this.requireCall(callId);
+    if (!call.sfu?.recvTransport) throw new Error("Set up the SFU call before consuming. Call setupSfuCall first.");
+    const existing = call.sfu.consumersByProducer.get(producerId);
+    if (existing) return { consumerId: existing.id, track: existing.track, kind: existing.kind, peerId: call.sfuProducers?.get(producerId)?.peerId ?? "" };
+    const result = await this.request<SfuConsumerResult>("sfu:consume", { callId, transportId: call.sfu.recvTransport.id, producerId, rtpCapabilities: call.sfu.rtpCapabilities });
+    const consumer = await call.sfu.recvTransport.consume({ id: result.consumerId, producerId: result.producerId, kind: result.kind, rtpParameters: result.rtpParameters });
+    call.sfu.consumers.set(consumer.id, consumer);
+    call.sfu.consumersByProducer.set(producerId, consumer);
+    call.sfu.consumedProducers.add(producerId);
+    await this.request<{ consumerId: string }>("sfu:resume-consumer", { callId, consumerId: consumer.id });
+    await consumer.resume();
+    const peerId = call.sfuProducers?.get(producerId)?.peerId ?? "";
+    const isScreen = call.sfuProducers?.get(producerId)?.appData?.source === "screen";
+    if (isScreen) {
+      const screenStream = new MediaStream([consumer.track]);
+      call.screenStreams = { ...(call.screenStreams ?? {}), [peerId]: screenStream };
+      this.emit("call:stream", this.snapshot(call), screenStream, peerId);
+    } else {
+      let peerStream = call.remoteStreams?.[peerId];
+      if (!peerStream) {
+        peerStream = new MediaStream([consumer.track]);
+        call.remoteStreams = { ...(call.remoteStreams ?? {}), [peerId]: peerStream };
+      } else {
+        peerStream.addTrack(consumer.track);
+      }
+      this.emit("call:stream", this.snapshot(call), peerStream, peerId);
+    }
+    this.emit("call:state", this.snapshot(call));
+    return { consumerId: consumer.id, track: consumer.track, kind: consumer.kind, peerId };
+  }
+
+  /** Auto-consume used by the high-level call path; no-ops for producers already consumed. */
+  private async autoConsumeSfuProducer(call: ManagedCall, producerId: string): Promise<void> {
+    if (!call.sfu || call.sfu.consumedProducers.has(producerId)) return;
+    try { await this.consumeSfuProducer(call.id, producerId); }
+    catch (error) {
+      call.sfu?.consumedProducers.delete(producerId);
+      this.emit("error", error instanceof Error ? error : new Error("Unable to consume the SFU producer."));
+    }
+  }
+
+  /** Publishes every track of a local stream to the SFU for the high-level call path. */
+  private async publishSfuStream(call: ManagedCall, stream: MediaStream): Promise<void> {
+    if (call.mediaMode !== "sfu" || !call.sfu?.sendTransport) return;
+    for (const track of stream.getTracks()) {
+      try { await this.publishSfuTrack(call.id, track); }
+      catch (error) { this.emit("error", error instanceof Error ? error : new Error("Unable to publish an SFU track.")); }
+    }
+  }
+
   private async onConnected(): Promise<void> {
     try {
       await this.ensureHandshake();
@@ -433,13 +626,97 @@ export class RealtimeClient {
     }));
   }
 
-  private async request<T>(event: "call:start" | "call:accept" | "call:reject" | "call:hangup" | "call:start-group" | "call:join" | "call:leave" | "webrtc:offer" | "webrtc:answer" | "webrtc:ice-candidate" | "group:webrtc:offer" | "group:webrtc:answer" | "group:webrtc:ice-candidate", input: unknown): Promise<T> {
+  private async request<T>(event: "call:start" | "call:accept" | "call:reject" | "call:hangup" | "call:start-group" | "call:join" | "call:leave" | "webrtc:offer" | "webrtc:answer" | "webrtc:ice-candidate" | "group:webrtc:offer" | "group:webrtc:answer" | "group:webrtc:ice-candidate" | "sfu:rtp-capabilities" | "sfu:create-transport" | "sfu:connect-transport" | "sfu:produce" | "sfu:consume" | "sfu:resume-consumer" | "sfu:close-transport" | "sfu:close-producer" | "sfu:close-consumer", input: unknown): Promise<T> {
     await this.ensureHandshake();
     const emit = this.socket as unknown as { emit: (name: string, payload: unknown, ack: (result: Result<T>) => void) => void };
     return new Promise((resolve, reject) => emit.emit(event, input, (result) => {
       if (result.ok) resolve(result.data);
       else reject(new Error(`${result.error.code}: ${result.error.message}`));
     }));
+  }
+
+  private onSfuProducerAdded(payload: SfuProducerAddedEvent): void {
+    const call = this.calls.get(payload.callId);
+    if (!call) return;
+    call.sfuProducers ??= new Map();
+    call.sfuProducers.set(payload.producerId, payload);
+    this.emit("sfu:producer-added", this.snapshot(call), payload);
+    if (call.sfu?.recvTransport && this.options.sfuAutoConsume !== false) void this.autoConsumeSfuProducer(call, payload.producerId);
+  }
+
+  private onSfuProducerRemoved(payload: SfuProducerRemovedEvent): void {
+    const call = this.calls.get(payload.callId);
+    if (!call) return;
+    const producer = call.sfuProducers?.get(payload.producerId);
+    call.sfuProducers?.delete(payload.producerId);
+    const consumer = call.sfu?.consumersByProducer.get(payload.producerId);
+    if (consumer) {
+      try { consumer.close(); } catch { /* already closed */ }
+      call.sfu?.consumers.delete(consumer.id);
+      call.sfu?.consumersByProducer.delete(payload.producerId);
+      call.sfu?.consumedProducers.delete(payload.producerId);
+      const isScreen = producer?.appData?.source === "screen";
+      const streams = isScreen ? call.screenStreams : call.remoteStreams;
+      const peerStream = streams?.[payload.peerId];
+      if (peerStream) {
+        peerStream.removeTrack(consumer.track);
+        if (peerStream.getTracks().length === 0) {
+          const next = { ...(streams ?? {}) };
+          delete next[payload.peerId];
+          if (isScreen) call.screenStreams = next;
+          else call.remoteStreams = next;
+        }
+      }
+    }
+    this.emit("sfu:producer-removed", this.snapshot(call), payload);
+    this.emit("call:state", this.snapshot(call));
+  }
+
+  private transportParams(params: SfuCreatedTransport): SfuClientTransportParams {
+    return { id: params.transportId, iceParameters: params.iceParameters, iceCandidates: params.iceCandidates, dtlsParameters: params.dtlsParameters };
+  }
+
+  private bindSfuTransport(call: ManagedCall, transport: SfuTransportLike): void {
+    transport.on("connect", ({ dtlsParameters }, callback, errback) => {
+      this.request<{ transportId: string }>("sfu:connect-transport", { callId: call.id, transportId: transport.id, dtlsParameters })
+        .then(() => callback())
+        .catch((error) => errback(error instanceof Error ? error : new Error("Unable to connect the SFU transport.")));
+    });
+    transport.on("produce", ({ kind, rtpParameters, appData }, callback, errback) => {
+      this.request<SfuProducerResult>("sfu:produce", { callId: call.id, transportId: transport.id, kind, rtpParameters, appData })
+        .then((result) => callback({ id: result.producerId }))
+        .catch((error) => errback(error instanceof Error ? error : new Error("Unable to publish the track.")));
+    });
+  }
+
+  /** Closes a locally-published SFU producer and notifies the server. */
+  private async closeSfuProducer(call: ManagedCall, producerId: string): Promise<void> {
+    const producer = call.sfu?.producers.get(producerId);
+    if (producer) {
+      try { producer.close(); } catch { /* already closed */ }
+      call.sfu?.producers.delete(producerId);
+    }
+    void this.request("sfu:close-producer", { callId: call.id, producerId }).catch(() => undefined);
+  }
+
+  private async closeSfuMedia(call: ManagedCall): Promise<void> {
+    const sfu = call.sfu;
+    call.sfu = undefined;
+    call.sfuProducers = undefined;
+    if (!sfu) return;
+    for (const producer of sfu.producers.values()) {
+      try { producer.close(); } catch { /* already closed */ }
+      void this.request("sfu:close-producer", { callId: call.id, producerId: producer.id }).catch(() => undefined);
+    }
+    for (const consumer of sfu.consumers.values()) {
+      try { consumer.close(); } catch { /* already closed */ }
+      void this.request("sfu:close-consumer", { callId: call.id, consumerId: consumer.id }).catch(() => undefined);
+    }
+    for (const transport of [sfu.sendTransport, sfu.recvTransport]) {
+      if (!transport) continue;
+      try { transport.close(); } catch { /* already closed */ }
+      void this.request("sfu:close-transport", { callId: call.id, transportId: transport.id }).catch(() => undefined);
+    }
   }
 
   private onCallIncoming(payload: CallIncomingEvent): void {
@@ -453,7 +730,7 @@ export class RealtimeClient {
     this.selfId = payload.selfId;
     const call: ManagedCall = {
       id: payload.callId, roomId: payload.roomId, isGroup: true, selfId: payload.selfId, callerId: payload.callerId,
-      participantIds: payload.participantIds, mediaType: payload.mediaType, state: "ringing", pendingCandidates: []
+      participantIds: payload.participantIds, mediaType: payload.mediaType, mediaMode: payload.mediaMode, state: "ringing", pendingCandidates: []
     };
     this.calls.set(call.id, call);
     this.emit("call:incoming", this.snapshot(call));
@@ -466,7 +743,8 @@ export class RealtimeClient {
     this.selfId = payload.selfId;
     call.selfId = payload.selfId;
     call.participantIds = payload.participantIds;
-    if (payload.participantId !== payload.selfId && call.localStream) this.groupConnection(call, payload.participantId);
+    if (payload.participantId !== payload.selfId && call.localStream && call.mediaMode !== "sfu") this.groupConnection(call, payload.participantId);
+    if (call.mediaMode === "sfu" && call.state !== "active") this.setCallState(call, "active");
     this.emit("call:state", this.snapshot(call));
     this.emit("group:call:participant-joined", this.snapshot(call), payload.participantId);
   }
@@ -695,9 +973,11 @@ export class RealtimeClient {
     call.connections?.clear();
     call.pendingByPeer?.clear();
     call.remoteStreams = undefined;
+    call.screenStreams = undefined;
     const connection = call.connection;
     call.connection = undefined;
     if (connection) { connection.onconnectionstatechange = null; connection.close(); }
+    void this.closeSfuMedia(call);
     call.localStream?.getTracks().forEach((track) => track.stop());
     call.screenStream?.getTracks().forEach((track) => track.stop());
     call.localStream = undefined;
@@ -719,7 +999,8 @@ export class RealtimeClient {
     return {
       id: call.id, roomId: call.roomId, isGroup: call.isGroup, remoteUserId: call.remoteUserId, callerId: call.callerId,
       participantIds: call.participantIds, mediaType: call.mediaType, state: call.state, localStream: call.localStream,
-      remoteStream: call.remoteStream, remoteStreams: call.remoteStreams, isScreenSharing: Boolean(call.screenStream)
+      remoteStream: call.remoteStream, remoteStreams: call.remoteStreams, screenStreams: call.screenStreams, isScreenSharing: Boolean(call.screenStream),
+      mediaMode: call.mediaMode
     };
   }
 

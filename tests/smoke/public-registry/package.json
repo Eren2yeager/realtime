@@ -1,15 +1,17 @@
 {
   "name": "@realtimesdk/public-smoke",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.7.0",
   "type": "module",
+  "trustedDependencies": ["mediasoup"],
   "scripts": {
     "smoke": "node public-registry-smoke-test.mjs"
   },
   "dependencies": {
-    "@realtimesdk/core": "0.5.0",
-    "@realtimesdk/server": "0.5.0",
-    "@realtimesdk/client": "0.5.0",
-    "@realtimesdk/express": "0.5.0"
+    "@realtimesdk/core": "0.7.0",
+    "@realtimesdk/server": "0.7.0",
+    "@realtimesdk/client": "0.7.0",
+    "@realtimesdk/express": "0.7.0",
+    "@realtimesdk/sfu": "0.7.0"
   }
 }
