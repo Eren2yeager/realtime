@@ -30,7 +30,7 @@ import {
   type SfuRtpParameters,
 } from "@realtimesdk/core";
 
-type SocketData = { user: AuthenticatedUser; protocolAccepted: boolean };
+type SocketData = { user: AuthenticatedUser; protocolAccepted: boolean; rate?: { windowStart: number; count: number } };
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents, object, SocketData>;
 type ActiveCall = {
   id: string;
@@ -125,6 +125,19 @@ export type RealtimeServerOptions = {
   sfu?: SfuNodeHandle;
   /** Decides whether a room's group calls use the SFU. Defaults to true whenever an SFU is configured. */
   useSfuForRoom?: (roomId: string) => boolean;
+  /** Maximum size in bytes of an incoming packet. Defaults to 1,000,000 (1 MB). */
+  maxHttpBufferSize?: number;
+  /** Allowed browser origins for the WebSocket handshake. When set, requests with an
+   * Origin header are validated against this allowlist; requests without an Origin header
+   * (for example non-browser clients) are allowed unless a function rejects them. */
+  origin?: string | string[] | RegExp | ((origin: string | undefined) => boolean);
+  /** Per-connection rate limiting for inbound events. Disabled unless provided. */
+  rateLimit?: {
+    /** Length of the window in milliseconds. Defaults to 1000. */
+    windowMs?: number;
+    /** Maximum events allowed per window before the connection is limited. Defaults to 100. */
+    max?: number;
+  };
 };
 
 const invalid = (message: string) => errorResult("INVALID_PAYLOAD", message);
@@ -141,7 +154,14 @@ export class RealtimeServer {
   private readonly sfuRooms = new Map<string, number>();
 
   constructor(private readonly options: RealtimeServerOptions) {
-    this.io = new Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>({ cors: options.cors });
+    this.io = new Server<ClientToServerEvents, ServerToClientEvents, object, SocketData>({
+      cors: options.cors,
+      maxHttpBufferSize: options.maxHttpBufferSize ?? 1_000_000,
+    });
+    this.io.use((socket, next) => {
+      if (!this.allowsOrigin(socket.request.headers.origin)) return next(new Error("Origin not allowed."));
+      next();
+    });
     this.io.use(async (socket, next) => {
       try {
         const user = await options.authenticate(socket.request);
@@ -681,9 +701,40 @@ export class RealtimeServer {
   }
 
   private ready<T>(socket: TypedSocket, ack: (result: Result<T>) => void): boolean {
-    if (socket.data.protocolAccepted) return true;
-    ack(errorResult("PROTOCOL_MISMATCH", "Complete the protocol handshake first."));
-    return false;
+    if (!socket.data.protocolAccepted) {
+      ack(errorResult("PROTOCOL_MISMATCH", "Complete the protocol handshake first."));
+      return false;
+    }
+    if (this.exceededRateLimit(socket)) {
+      ack(errorResult("RATE_LIMITED", "Too many requests. Slow down and try again."));
+      return false;
+    }
+    return true;
+  }
+  private allowsOrigin(origin: string | string[] | undefined): boolean {
+    const allowed = this.options.origin;
+    if (!allowed) return true;
+    if (typeof allowed === "function") return allowed(origin === undefined ? undefined : String(origin));
+    if (origin === undefined) return true;
+    const value = String(origin);
+    if (Array.isArray(allowed)) return allowed.includes(value);
+    if (allowed instanceof RegExp) return allowed.test(value);
+    return allowed === value;
+  }
+
+  private exceededRateLimit(socket: TypedSocket): boolean {
+    const options = this.options.rateLimit;
+    if (!options) return false;
+    const windowMs = options.windowMs ?? 1000;
+    const max = options.max ?? 100;
+    const now = Date.now();
+    let rate = socket.data.rate;
+    if (!rate || now - rate.windowStart >= windowMs) {
+      rate = { windowStart: now, count: 0 };
+      socket.data.rate = rate;
+    }
+    rate.count += 1;
+    return rate.count > max;
   }
 
   private validJoin<T>(input: JoinRoomInput, ack: (result: Result<T>) => void): boolean {

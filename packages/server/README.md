@@ -49,6 +49,41 @@ realtime.attach(httpServer);
 httpServer.listen(3001);
 ```
 
+## Security (recommended for production)
+
+Add origin validation, rate limiting, and a bounded packet size to harden the
+server against cross-site WebSocket hijacking and abuse:
+
+```ts
+const realtime = createRealtimeServer({
+  port: 3001,
+  authenticate: (request) => ({ userId: "user-123" }),
+  authorizeRoom: () => true,
+
+  // Only accept browser connections from these origins. Requests without an
+  // Origin header (e.g. non-browser clients) are allowed unless the option is a
+  // function that rejects them. A RegExp or a function is also supported.
+  origin: ["https://app.example.com"],
+
+  // Allow at most 100 inbound events per second per connection.
+  rateLimit: { windowMs: 1000, max: 100 },
+
+  // Reject packets larger than 1 MB.
+  maxHttpBufferSize: 1_000_000,
+});
+
+await realtime.start();
+```
+
+- `origin` — `string`, `string[]`, `RegExp`, or `(origin) => boolean`. Validated on
+  every handshake; rejections close the connection before it is usable.
+- `rateLimit` — per-connection sliding window (`windowMs`/`max`). Exceeding it
+  returns a `RATE_LIMITED` error for the offending events.
+- `maxHttpBufferSize` — maximum incoming packet size in bytes (default 1 MB).
+
+These options are off by default so existing deployments are unaffected; enable
+them in production.
+
 ## SFU media routing (v0.7)
 
 Optionally route large group calls through a media-routing node built on

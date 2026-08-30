@@ -199,6 +199,7 @@ export type RealtimeErrorCode =
   | "SFU_UNAVAILABLE"
   | "SFU_ERROR"
   | "PROTOCOL_MISMATCH"
+  | "RATE_LIMITED"
   | "INTERNAL_ERROR";
 
 export type RealtimeError = { code: RealtimeErrorCode; message: string };

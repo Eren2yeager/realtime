@@ -43,12 +43,14 @@ async function startServer(overrides: Partial<RealtimeServerOptions> = {}): Prom
   return harness;
 }
 
-function connect(harness: Harness, userId: string): Promise<Socket> {
+function connect(harness: Harness, userId: string, extraHeaders?: Record<string, string>): Promise<Socket> {
   return new Promise((resolve, reject) => {
     const socket = io(`http://localhost:${harness.port}`, {
       query: { userId },
       transports: ["websocket"],
       forceNew: true,
+      reconnection: false,
+      extraHeaders,
     });
     harness.clients.push(socket);
     socket.once("connect", () => resolve(socket));
@@ -56,10 +58,40 @@ function connect(harness: Harness, userId: string): Promise<Socket> {
   });
 }
 
+function connectExpectingError(
+  harness: Harness,
+  userId: string,
+  extraHeaders?: Record<string, string>,
+): Promise<Error> {
+  return new Promise((resolve, reject) => {
+    const socket = io(`http://localhost:${harness.port}`, {
+      query: { userId },
+      transports: ["websocket"],
+      forceNew: true,
+      reconnection: false,
+      extraHeaders,
+    });
+    harness.clients.push(socket);
+    const timer = setTimeout(() => {
+      socket.disconnect();
+      reject(new Error("Expected a connect_error but the client connected."));
+    }, 3000);
+    socket.once("connect_error", (error) => {
+      clearTimeout(timer);
+      socket.disconnect();
+      resolve(error);
+    });
+    socket.once("connect", () => {
+      clearTimeout(timer);
+      socket.disconnect();
+      reject(new Error("Expected a connect_error but the client connected."));
+    });
+  });
+}
+
 function emit<T>(socket: Socket, event: string, payload: unknown): Promise<Result<T>> {
   return new Promise((resolve) => socket.emit(event, payload, (result: Result<T>) => resolve(result)));
 }
-
 async function handshake(socket: Socket): Promise<void> {
   const result = await emit<{ version: string }>(socket, "protocol:handshake", PROTOCOL_VERSION);
   expect(result.ok).toBe(true);
@@ -213,5 +245,47 @@ describe("server one-to-one call state machine", () => {
     expect((await bobEnded).reason).toBe("hangup");
     alice.disconnect();
     bob.disconnect();
+  });
+});
+
+describe("server origin validation", () => {
+  test("rejects disallowed origins but allows allowed and headerless clients", async () => {
+    const harness = await startServer({ origin: ["https://app.example.com"] });
+
+    const evil = await connectExpectingError(harness, "alice", { Origin: "https://evil.example.com" });
+    expect(evil.message).toContain("Origin not allowed");
+
+    const headerless = await connect(harness, "alice");
+    expect(headerless.connected).toBe(true);
+    headerless.disconnect();
+
+    const allowed = await connect(harness, "alice", { Origin: "https://app.example.com" });
+    expect(allowed.connected).toBe(true);
+    allowed.disconnect();
+  });
+});
+
+describe("server rate limiting", () => {
+  test("rejects events over the per-window limit with RATE_LIMITED", async () => {
+    const harness = await startServer({ rateLimit: { windowMs: 1000, max: 2 } });
+    const alice = await connect(harness, "alice");
+    await handshake(alice);
+
+    const joined = await emit(alice, "room:join", { roomId: "lobby" });
+    expect(joined.ok).toBe(true);
+    const sent = await emit(alice, "message:send", { roomId: "lobby", content: "one" });
+    expect(sent.ok).toBe(true);
+
+    const limited = await emit(alice, "message:send", { roomId: "lobby", content: "two" });
+    expect(limited.ok).toBe(false);
+    if (!limited.ok) expect(limited.error.code).toBe("RATE_LIMITED");
+    alice.disconnect();
+  });
+});
+
+describe("server buffer size", () => {
+  test("applies the configured maxHttpBufferSize", async () => {
+    const harness = await startServer({ maxHttpBufferSize: 4096 });
+    expect(harness.server.io.engine.opts.maxHttpBufferSize).toBe(4096);
   });
 });
