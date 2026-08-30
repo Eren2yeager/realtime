@@ -21,8 +21,14 @@ export const createNextRealtime = (app: NextApplication, options: RealtimeServer
     httpServer,
     start: async (port = options.port ?? 3000) => {
       await new Promise<void>((resolve, reject) => {
-        const onError = (error: Error) => { httpServer.off("listening", onListening); reject(error); };
-        const onListening = () => { httpServer.off("error", onError); resolve(); };
+        const onError = (error: Error) => {
+          httpServer.off("listening", onListening);
+          reject(error);
+        };
+        const onListening = () => {
+          httpServer.off("error", onError);
+          resolve();
+        };
         httpServer.once("error", onError);
         httpServer.once("listening", onListening);
         httpServer.listen(port);
@@ -32,8 +38,8 @@ export const createNextRealtime = (app: NextApplication, options: RealtimeServer
       httpServer.closeAllConnections?.();
       await realtime.close();
       if (!httpServer.listening) return;
-      await new Promise<void>((resolve, reject) => httpServer.close((error) => error ? reject(error) : resolve()));
-    }
+      await new Promise<void>((resolve, reject) => httpServer.close((error) => (error ? reject(error) : resolve())));
+    },
   };
 };
 

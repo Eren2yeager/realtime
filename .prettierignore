@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.next/
+tests/react-test/node_modules/
+tests/next-test/node_modules/
+tests/next-test/.next/
+tests/smoke/public-registry/node_modules/
+bun.lock

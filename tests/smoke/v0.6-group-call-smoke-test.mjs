@@ -14,12 +14,24 @@ class FakeRTCPeerConnection {
   ontrack = null;
   onconnectionstatechange = null;
   constructor() {}
-  addTrack() { return {}; }
-  getSenders() { return []; }
-  async createOffer() { return { type: "offer", sdp: "fake-offer" }; }
-  async createAnswer() { return { type: "answer", sdp: "fake-answer" }; }
-  async setLocalDescription(description) { this.localDescription = description; }
-  async setRemoteDescription(description) { this.remoteDescription = description; }
+  addTrack() {
+    return {};
+  }
+  getSenders() {
+    return [];
+  }
+  async createOffer() {
+    return { type: "offer", sdp: "fake-offer" };
+  }
+  async createAnswer() {
+    return { type: "answer", sdp: "fake-answer" };
+  }
+  async setLocalDescription(description) {
+    this.localDescription = description;
+  }
+  async setRemoteDescription(description) {
+    this.remoteDescription = description;
+  }
   async addIceCandidate() {}
   close() {}
 }
@@ -32,18 +44,22 @@ const server = createRealtimeServer({
     const url = new URL(request.url, "http://localhost");
     return { userId: url.searchParams.get("userId") ?? "anonymous" };
   },
-  authorizeRoom: () => true
+  authorizeRoom: () => true,
 });
 
-const waitFor = (client, event, matches = () => true) => new Promise((resolve, reject) => {
-  const timeout = setTimeout(() => { unsubscribe(); reject(new Error(`Timed out waiting for ${event}`)); }, 5_000);
-  const unsubscribe = client.on(event, (...args) => {
-    if (!matches(...args)) return;
-    clearTimeout(timeout);
-    unsubscribe();
-    resolve(args.length === 1 ? args[0] : args);
+const waitFor = (client, event, matches = () => true) =>
+  new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      reject(new Error(`Timed out waiting for ${event}`));
+    }, 5_000);
+    const unsubscribe = client.on(event, (...args) => {
+      if (!matches(...args)) return;
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve(args.length === 1 ? args[0] : args);
+    });
   });
-});
 
 let exitCode = 0;
 try {
@@ -54,7 +70,9 @@ try {
   const aliceConnected = waitFor(alice, "connected");
   const bobConnected = waitFor(bob, "connected");
   const carolConnected = waitFor(carol, "connected");
-  alice.connect(); bob.connect(); carol.connect();
+  alice.connect();
+  bob.connect();
+  carol.connect();
   await Promise.all([aliceConnected, bobConnected, carolConnected]);
   await Promise.all([alice.joinRoom("lobby"), bob.joinRoom("lobby"), carol.joinRoom("lobby")]);
 
@@ -74,7 +92,11 @@ try {
   assert.equal(carolRinging.id, started.id);
 
   // Bob joins; the caller (alice) is notified of the new participant.
-  const aliceSeesBob = waitFor(alice, "group:call:participant-joined", (call, participantId) => call.id === started.id && participantId === "bob");
+  const aliceSeesBob = waitFor(
+    alice,
+    "group:call:participant-joined",
+    (call, participantId) => call.id === started.id && participantId === "bob",
+  );
   const bobJoined = await bob.joinCallRaw(started.id);
   assert.equal(bobJoined.isGroup, true);
   // Join results list only participants who have joined so far (carol has not yet joined).
@@ -83,35 +105,75 @@ try {
   assert.equal(bobId, "bob");
 
   // Full-mesh signaling relays offer, answer, and ICE candidates to an explicit target.
-  const bobOffer = waitFor(bob, "group:webrtc:offer", (event) => event.callId === started.id && event.targetId === "bob");
-  const aliceAutoAnswer = waitFor(alice, "group:webrtc:answer", (event) => event.callId === started.id && event.targetId === "alice" && event.description.sdp === "fake-answer");
+  const bobOffer = waitFor(
+    bob,
+    "group:webrtc:offer",
+    (event) => event.callId === started.id && event.targetId === "bob",
+  );
+  const aliceAutoAnswer = waitFor(
+    alice,
+    "group:webrtc:answer",
+    (event) => event.callId === started.id && event.targetId === "alice" && event.description.sdp === "fake-answer",
+  );
   await alice.sendGroupOffer(started.id, "bob", { type: "offer", sdp: "group-offer" });
   assert.equal((await bobOffer).senderId, "alice");
   // Bob auto-answers the offer through the client SDK path.
   assert.equal((await aliceAutoAnswer).senderId, "bob");
-  const aliceManualAnswer = waitFor(alice, "group:webrtc:answer", (event) => event.callId === started.id && event.targetId === "alice" && event.description.sdp === "group-answer");
+  const aliceManualAnswer = waitFor(
+    alice,
+    "group:webrtc:answer",
+    (event) => event.callId === started.id && event.targetId === "alice" && event.description.sdp === "group-answer",
+  );
   await bob.sendGroupAnswer(started.id, "alice", { type: "answer", sdp: "group-answer" });
   assert.equal((await aliceManualAnswer).senderId, "bob");
-  const bobCandidate = waitFor(bob, "group:webrtc:ice-candidate", (event) => event.callId === started.id && event.targetId === "bob");
-  await alice.sendGroupIceCandidate(started.id, "bob", { candidate: "candidate:1 1 udp 1 127.0.0.1 9999 typ host", sdpMid: "0", sdpMLineIndex: 0 });
+  const bobCandidate = waitFor(
+    bob,
+    "group:webrtc:ice-candidate",
+    (event) => event.callId === started.id && event.targetId === "bob",
+  );
+  await alice.sendGroupIceCandidate(started.id, "bob", {
+    candidate: "candidate:1 1 udp 1 127.0.0.1 9999 typ host",
+    sdpMid: "0",
+    sdpMLineIndex: 0,
+  });
   const ice = await bobCandidate;
   assert.equal(ice.senderId, "alice");
   assert.equal(ice.targetId, "bob");
 
   // Carol joins; both alice and bob learn about the new participant.
-  const aliceSeesCarol = waitFor(alice, "group:call:participant-joined", (call, participantId) => call.id === started.id && participantId === "carol");
-  const bobSeesCarol = waitFor(bob, "group:call:participant-joined", (call, participantId) => call.id === started.id && participantId === "carol");
+  const aliceSeesCarol = waitFor(
+    alice,
+    "group:call:participant-joined",
+    (call, participantId) => call.id === started.id && participantId === "carol",
+  );
+  const bobSeesCarol = waitFor(
+    bob,
+    "group:call:participant-joined",
+    (call, participantId) => call.id === started.id && participantId === "carol",
+  );
   await carol.joinCallRaw(started.id);
   await Promise.all([aliceSeesCarol, bobSeesCarol]);
 
   // Carol leaves; participants are notified without ending the call.
-  const aliceSeesCarolLeft = waitFor(alice, "group:call:participant-left", (call, participantId) => call.id === started.id && participantId === "carol");
-  const bobSeesCarolLeft = waitFor(bob, "group:call:participant-left", (call, participantId) => call.id === started.id && participantId === "carol");
+  const aliceSeesCarolLeft = waitFor(
+    alice,
+    "group:call:participant-left",
+    (call, participantId) => call.id === started.id && participantId === "carol",
+  );
+  const bobSeesCarolLeft = waitFor(
+    bob,
+    "group:call:participant-left",
+    (call, participantId) => call.id === started.id && participantId === "carol",
+  );
   await carol.leaveCall(started.id);
   await Promise.all([aliceSeesCarolLeft, bobSeesCarolLeft]);
 
   // Bob leaves; only alice is now in the call.
-  const aliceSeesBobLeft = waitFor(alice, "group:call:participant-left", (call, participantId) => call.id === started.id && participantId === "bob");
+  const aliceSeesBobLeft = waitFor(
+    alice,
+    "group:call:participant-left",
+    (call, participantId) => call.id === started.id && participantId === "bob",
+  );
   await bob.leaveCall(started.id);
   await aliceSeesBobLeft;
 
@@ -126,7 +188,8 @@ try {
   const eve = createRealtimeClient("http://localhost:3006?userId=eve");
   const daveConnected = waitFor(dave, "connected");
   const eveConnected = waitFor(eve, "connected");
-  dave.connect(); eve.connect();
+  dave.connect();
+  eve.connect();
   await Promise.all([daveConnected, eveConnected]);
   await Promise.all([dave.joinRoom("reject-room"), eve.joinRoom("reject-room")]);
   const eveIncoming = waitFor(eve, "call:incoming");
@@ -140,8 +203,14 @@ try {
   const [daveEndedCall] = await daveEnded;
   assert.equal(daveEndedCall.state, "ended");
 
-  console.log("✅ v0.6 smoke test passed: group audio/video calls, full-mesh signaling, join/leave, and rejection work.");
-  alice.disconnect(); bob.disconnect(); carol.disconnect(); dave.disconnect(); eve.disconnect();
+  console.log(
+    "✅ v0.6 smoke test passed: group audio/video calls, full-mesh signaling, join/leave, and rejection work.",
+  );
+  alice.disconnect();
+  bob.disconnect();
+  carol.disconnect();
+  dave.disconnect();
+  eve.disconnect();
 } catch (error) {
   console.error(error);
   exitCode = 1;

@@ -28,8 +28,7 @@ import { createRealtimeServer } from "@realtimesdk/server";
 const realtime = createRealtimeServer({
   port: 3001,
   authenticate: (request) => ({ userId: "user-123" }),
-  authorizeRoom: ({ user, roomId, action }) =>
-    roomId.startsWith(`private:${user.userId}:`) || roomId === "lobby"
+  authorizeRoom: ({ user, roomId, action }) => roomId.startsWith(`private:${user.userId}:`) || roomId === "lobby",
 });
 
 await realtime.start();
@@ -44,7 +43,7 @@ import { createRealtimeServer } from "@realtimesdk/server";
 const httpServer = createServer();
 const realtime = createRealtimeServer({
   authenticate: (request) => ({ userId: "user-123" }),
-  authorizeRoom: () => true
+  authorizeRoom: () => true,
 });
 realtime.attach(httpServer);
 httpServer.listen(3001);
@@ -66,7 +65,7 @@ const realtime = createRealtimeServer({
   authenticate: (request) => ({ userId: "user-123" }),
   authorizeRoom: () => true,
   sfu: createSfuNode({ listenIps: [{ ip: "0.0.0.0" }] }),
-  useSfuForRoom: (roomId) => roomId.startsWith("large:")
+  useSfuForRoom: (roomId) => roomId.startsWith("large:"),
 });
 
 await realtime.start();

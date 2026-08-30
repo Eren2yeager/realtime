@@ -24,7 +24,7 @@ await app.prepare();
 
 const server = createNextRealtime(app.getRequestHandler(), {
   authenticate: (request) => ({ userId: "user-123" }),
-  authorizeRoom: () => true
+  authorizeRoom: () => true,
 });
 
 await server.start(3000);

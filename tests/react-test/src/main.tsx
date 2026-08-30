@@ -35,10 +35,14 @@ void (async () => {
         <RealtimeProvider url="http://localhost:3000" options={{ query: { userId }, iceServers }}>
           <Chat userId={userId} initialCallWith={initialCallWith} />
         </RealtimeProvider>
-      </StrictMode>
+      </StrictMode>,
     );
   } catch (reason) {
     const message = reason instanceof Error ? reason.message : "Unable to load Metered ICE servers.";
-    root.render(<main><p className="error">{message}</p></main>);
+    root.render(
+      <main>
+        <p className="error">{message}</p>
+      </main>,
+    );
   }
 })();

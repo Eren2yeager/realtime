@@ -18,9 +18,11 @@ The platform should abstract away the difficult realtime/WebRTC infrastructure w
 ## 2. Core Philosophy
 
 ### Bring Your Own Database
+
 The platform must not require or impose a database.
 
 Developers may:
+
 - Use no persistence at all.
 - Persist data themselves using their existing database.
 - Connect the platform to custom storage adapters in the future.
@@ -28,16 +30,20 @@ Developers may:
 The platform should never impose a fixed application database schema.
 
 ### Bring Your Own Framework
+
 The core should not depend on React, Next.js, Express, or another framework.
 
 Initial integrations should target:
+
 - React
 - Next.js
 - Express
 - Vanilla JavaScript where practical
 
 ### Realtime Infrastructure as the Product
+
 The platform owns realtime communication concerns:
+
 - Connections
 - Rooms
 - Presence
@@ -49,6 +55,7 @@ The platform owns realtime communication concerns:
 - Realtime events
 
 The developer owns:
+
 - Application models
 - Database persistence
 - Business rules
@@ -81,6 +88,7 @@ The CLI should detect the framework and generate the appropriate integration.
 ## 4. Main Features
 
 ### Chat
+
 - One-to-one messaging
 - Room/group messaging
 - Message events
@@ -89,6 +97,7 @@ The CLI should detect the framework and generate the appropriate integration.
 - Online/offline presence
 
 ### Calling
+
 - One-to-one audio calls
 - One-to-one video calls
 - Group audio calls
@@ -100,12 +109,14 @@ The CLI should detect the framework and generate the appropriate integration.
 - Call state management
 
 ### Streaming
+
 - Screen sharing
 - Camera streaming
 - Microphone streaming
 - Future support for group streaming
 
 ### WebRTC
+
 - Peer connection lifecycle
 - Offer/answer exchange
 - ICE candidate exchange
@@ -114,6 +125,7 @@ The CLI should detect the framework and generate the appropriate integration.
 - Connection failure/recovery
 
 ### Media Routing (SFU)
+
 - Self-hosted media-routing node for large group calls, shipped as `@realtimesdk/sfu`
 - Built on mediasoup as a library (media routing only, no signaling or client SDK)
 - Hub-and-spoke media topology as a fallback from full-mesh
@@ -121,6 +133,7 @@ The CLI should detect the framework and generate the appropriate integration.
 - Application-provided SFU configuration, consistent with bring-your-own-infra
 
 ### Server
+
 - WebSocket/realtime transport
 - Signaling
 - Rooms
@@ -132,6 +145,7 @@ The CLI should detect the framework and generate the appropriate integration.
 ## 5. Non-Goals
 
 The first version should NOT attempt to become:
+
 - A database platform
 - A full authentication provider
 - A video storage platform
@@ -143,6 +157,7 @@ The first version should NOT attempt to become:
 ## 6. Success Criteria
 
 The project is successful when a developer can add basic chat and calling without manually implementing:
+
 - Socket event protocols
 - WebRTC offer/answer handling
 - ICE candidate handling

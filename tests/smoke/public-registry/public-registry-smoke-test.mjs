@@ -12,23 +12,42 @@ assert.equal(directRoomId("a", "b"), "dm:a:b", "directRoomId helper mismatch");
 // Node has no WebRTC media objects; the SDK only stores and forwards these,
 // so minimal stubs let the SFU participant flow run end-to-end.
 class FakeMediaStreamTrack {
-  constructor(kind) { this.kind = kind; this.readyState = "live"; }
-  stop() { this.readyState = "ended"; }
+  constructor(kind) {
+    this.kind = kind;
+    this.readyState = "live";
+  }
+  stop() {
+    this.readyState = "ended";
+  }
 }
 class FakeMediaStream {
-  constructor(tracks = []) { this.tracks = tracks; this.active = true; }
-  getTracks() { return this.tracks; }
-  getAudioTracks() { return this.tracks.filter((track) => track.kind === "audio"); }
-  getVideoTracks() { return this.tracks.filter((track) => track.kind === "video"); }
-  addTrack(track) { if (!this.tracks.includes(track)) this.tracks.push(track); }
-  removeTrack(track) { this.tracks = this.tracks.filter((item) => item !== track); }
+  constructor(tracks = []) {
+    this.tracks = tracks;
+    this.active = true;
+  }
+  getTracks() {
+    return this.tracks;
+  }
+  getAudioTracks() {
+    return this.tracks.filter((track) => track.kind === "audio");
+  }
+  getVideoTracks() {
+    return this.tracks.filter((track) => track.kind === "video");
+  }
+  addTrack(track) {
+    if (!this.tracks.includes(track)) this.tracks.push(track);
+  }
+  removeTrack(track) {
+    this.tracks = this.tracks.filter((item) => item !== track);
+  }
 }
 globalThis.MediaStream = FakeMediaStream;
 globalThis.MediaStreamTrack = FakeMediaStreamTrack;
 // The high-level call APIs acquire media through navigator.mediaDevices.
 Object.defineProperty(globalThis, "navigator", { value: { mediaDevices: {} }, configurable: true, writable: true });
 globalThis.navigator.mediaDevices.getUserMedia = async () => new FakeMediaStream([new FakeMediaStreamTrack("audio")]);
-globalThis.navigator.mediaDevices.getDisplayMedia = async () => new FakeMediaStream([new FakeMediaStreamTrack("video")]);
+globalThis.navigator.mediaDevices.getDisplayMedia = async () =>
+  new FakeMediaStream([new FakeMediaStreamTrack("video")]);
 
 // A fake mediasoup-client Device/Transport. produce() drives the SDK-bound
 // connect and produce handlers exactly like mediasoup-client does, so the real
@@ -41,40 +60,57 @@ class FakeTransport {
     this.consumers = new Map();
     this.connected = false;
   }
-  on(event, handler) { this.handlers.set(event, handler); return this; }
+  on(event, handler) {
+    this.handlers.set(event, handler);
+    return this;
+  }
   async produce({ track, appData }) {
     const connect = this.handlers.get("connect");
     if (connect && !this.connected) {
       this.connected = true;
-      await new Promise((resolve, reject) => connect(
-        { dtlsParameters: { role: "client", fingerprints: [{ algorithm: "sha-256", value: "AA:BB:CC" }] } },
-        resolve,
-        reject
-      ));
+      await new Promise((resolve, reject) =>
+        connect(
+          { dtlsParameters: { role: "client", fingerprints: [{ algorithm: "sha-256", value: "AA:BB:CC" }] } },
+          resolve,
+          reject,
+        ),
+      );
     }
     const produce = this.handlers.get("produce");
     if (!produce) throw new Error("FakeTransport has no produce handler");
     let producerId;
-    await new Promise((resolve, reject) => produce(
-      {
-        kind: track.kind,
-        rtpParameters: track.kind === "video"
-          ? {
-              codecs: [{ mimeType: "video/VP8", payloadType: 96, clockRate: 90000 }],
-              encodings: [{ ssrc: 12346 }],
-              rtcp: { cname: "public-sfu-smoke" }
-            }
-          : {
-              codecs: [{ mimeType: "audio/opus", payloadType: 111, clockRate: 48000, channels: 2 }],
-              encodings: [{ ssrc: 12345 }],
-              rtcp: { cname: "public-sfu-smoke" }
-            },
-        appData
+    await new Promise((resolve, reject) =>
+      produce(
+        {
+          kind: track.kind,
+          rtpParameters:
+            track.kind === "video"
+              ? {
+                  codecs: [{ mimeType: "video/VP8", payloadType: 96, clockRate: 90000 }],
+                  encodings: [{ ssrc: 12346 }],
+                  rtcp: { cname: "public-sfu-smoke" },
+                }
+              : {
+                  codecs: [{ mimeType: "audio/opus", payloadType: 111, clockRate: 48000, channels: 2 }],
+                  encodings: [{ ssrc: 12345 }],
+                  rtcp: { cname: "public-sfu-smoke" },
+                },
+          appData,
+        },
+        ({ id }) => {
+          producerId = id;
+          resolve();
+        },
+        reject,
+      ),
+    );
+    const producer = {
+      id: producerId,
+      kind: track.kind,
+      close() {
+        this.closed = true;
       },
-      ({ id }) => { producerId = id; resolve(); },
-      reject
-    ));
-    const producer = { id: producerId, kind: track.kind, close() { this.closed = true; } };
+    };
     this.producers.set(producerId, producer);
     return producer;
   }
@@ -86,20 +122,34 @@ class FakeTransport {
       rtpParameters,
       track: new FakeMediaStreamTrack(kind),
       paused: true,
-      resume() { this.paused = false; },
-      close() { this.closed = true; }
+      resume() {
+        this.paused = false;
+      },
+      close() {
+        this.closed = true;
+      },
     };
     this.consumers.set(id, consumer);
     return consumer;
   }
-  close() { this.closed = true; }
+  close() {
+    this.closed = true;
+  }
 }
 
 class FakeDevice {
-  constructor() { this.rtpCapabilities = { codecs: [] }; }
-  async load({ routerRtpCapabilities }) { this.rtpCapabilities = routerRtpCapabilities; }
-  createSendTransport(params) { return new FakeTransport(params); }
-  createRecvTransport(params) { return new FakeTransport(params); }
+  constructor() {
+    this.rtpCapabilities = { codecs: [] };
+  }
+  async load({ routerRtpCapabilities }) {
+    this.rtpCapabilities = routerRtpCapabilities;
+  }
+  createSendTransport(params) {
+    return new FakeTransport(params);
+  }
+  createRecvTransport(params) {
+    return new FakeTransport(params);
+  }
 }
 
 const app = (request, response) => {
@@ -120,7 +170,8 @@ const server = createExpressRealtime(app, {
     const url = new URL(request.url ?? "/", "http://localhost");
     return { userId: url.searchParams.get("userId") ?? `anon-${Math.random().toString(36).slice(2, 8)}` };
   },
-  authorizeRoom: ({ user, roomId }) => roomId === "public-smoke-room" || roomId === "sfu-lobby" || roomId.startsWith(`private:${user.userId}:`)
+  authorizeRoom: ({ user, roomId }) =>
+    roomId === "public-smoke-room" || roomId === "sfu-lobby" || roomId.startsWith(`private:${user.userId}:`),
 });
 
 await server.start();
@@ -183,20 +234,32 @@ try {
   const ringing = (await daveIncoming)[0];
   assert.equal(ringing.id, started.id);
 
-  const daveSeesCarol = waitFor(dave, "call:stream", (call, stream, peerId) => call.id === started.id && peerId === "carol");
+  const daveSeesCarol = waitFor(
+    dave,
+    "call:stream",
+    (call, stream, peerId) => call.id === started.id && peerId === "carol",
+  );
   const joined = await dave.joinCall(started.id);
   assert.equal(joined.mediaMode, "sfu");
   assert.equal(joined.state, "active");
   const [, daveStream] = await daveSeesCarol;
   assert.equal(daveStream.getAudioTracks()[0].kind, "audio");
 
-  const daveSeesScreen = waitFor(dave, "call:stream", (call, stream, peerId) => call.id === started.id && peerId === "carol" && stream.getVideoTracks().length > 0);
+  const daveSeesScreen = waitFor(
+    dave,
+    "call:stream",
+    (call, stream, peerId) => call.id === started.id && peerId === "carol" && stream.getVideoTracks().length > 0,
+  );
   const screenStream = await carol.startScreenShare(started.id);
   assert.equal(screenStream.getVideoTracks()[0].kind, "video");
   const [, screen] = await daveSeesScreen;
   assert.equal(screen.getVideoTracks()[0].kind, "video");
 
-  const daveSeesRemoved = waitFor(dave, "sfu:producer-removed", (call, event) => event.callId === started.id && event.peerId === "carol");
+  const daveSeesRemoved = waitFor(
+    dave,
+    "sfu:producer-removed",
+    (call, event) => event.callId === started.id && event.peerId === "carol",
+  );
   await carol.stopScreenShare(started.id);
   await daveSeesRemoved;
   assert.equal(dave.getCall(started.id).screenStreams?.carol, undefined);

@@ -5,11 +5,29 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
-  "scripts": { "build": "tsc -p tsconfig.json", "prepublishOnly": "bun run build" },
-  "keywords": ["realtime", "websocket", "chat", "webrtc", "protocol", "sdk"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "realtime",
+    "websocket",
+    "chat",
+    "webrtc",
+    "protocol",
+    "sdk"
+  ],
   "license": "MIT",
   "author": "Eren2yeager",
   "homepage": "https://github.com/Eren2yeager/realtime#readme",
@@ -20,10 +38,14 @@
   "bugs": {
     "url": "https://github.com/Eren2yeager/realtime/issues"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "devDependencies": { "typescript": "^5.7.3" }
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
 }

@@ -5,11 +5,29 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
-  "scripts": { "build": "tsc -p tsconfig.json", "prepublishOnly": "bun run build" },
-  "keywords": ["realtime", "express", "socket.io", "chat", "webrtc", "sdk"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "realtime",
+    "express",
+    "socket.io",
+    "chat",
+    "webrtc",
+    "sdk"
+  ],
   "license": "MIT",
   "author": "Eren2yeager",
   "homepage": "https://github.com/Eren2yeager/realtime#readme",
@@ -20,12 +38,21 @@
   "bugs": {
     "url": "https://github.com/Eren2yeager/realtime/issues"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "dependencies": { "@realtimesdk/server": "^0.7.0" },
-  "peerDependencies": { "express": ">=4.18.0" },
-  "devDependencies": { "@types/node": "^22.10.5", "typescript": "^5.7.3" }
+  "dependencies": {
+    "@realtimesdk/server": "^0.7.0"
+  },
+  "peerDependencies": {
+    "express": ">=4.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3"
+  }
 }

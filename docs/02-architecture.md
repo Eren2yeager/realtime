@@ -85,7 +85,7 @@ The server should support two modes.
 
 ```js
 const realtime = createRealtimeServer({
-  port: 3001
+  port: 3001,
 });
 
 realtime.start();
@@ -196,7 +196,7 @@ realtime.on("message", async (message) => {
   await db.messages.create({
     sender: message.senderId,
     body: message.content,
-    room: message.roomId
+    room: message.roomId,
   });
 });
 ```
@@ -237,7 +237,7 @@ Possible future API:
 createRealtimeServer({
   authenticate: async (request) => {
     return getExistingUser(request);
-  }
+  },
 });
 ```
 

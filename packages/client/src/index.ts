@@ -36,7 +36,7 @@ import {
   type WebRtcIceCandidate,
   type WebRtcIceCandidateEvent,
   type WebRtcDescriptionEvent,
-  type WebRtcSessionDescription
+  type WebRtcSessionDescription,
 } from "@realtimesdk/core";
 
 type ClientEvents = {
@@ -111,10 +111,29 @@ export type SfuClientTransportParams = {
 /** The mediasoup-client transport surface the SDK uses. Satisfied structurally by mediasoup-client's Transport. */
 export interface SfuTransportLike {
   id: string;
-  on(event: "connect", handler: (data: { dtlsParameters: SfuDtlsParameters }, callback: () => void, errback: (error: Error) => void) => void): this;
-  on(event: "produce", handler: (data: { kind: "audio" | "video"; rtpParameters: SfuRtpParameters; appData: Record<string, unknown> }, callback: (data: { id: string }) => void, errback: (error: Error) => void) => void): this;
+  on(
+    event: "connect",
+    handler: (
+      data: { dtlsParameters: SfuDtlsParameters },
+      callback: () => void,
+      errback: (error: Error) => void,
+    ) => void,
+  ): this;
+  on(
+    event: "produce",
+    handler: (
+      data: { kind: "audio" | "video"; rtpParameters: SfuRtpParameters; appData: Record<string, unknown> },
+      callback: (data: { id: string }) => void,
+      errback: (error: Error) => void,
+    ) => void,
+  ): this;
   produce(input: { track: MediaStreamTrack; appData?: Record<string, unknown> }): Promise<SfuProducerLike>;
-  consume(input: { id: string; producerId: string; kind: "audio" | "video"; rtpParameters: SfuRtpParameters }): Promise<SfuConsumerLike>;
+  consume(input: {
+    id: string;
+    producerId: string;
+    kind: "audio" | "video";
+    rtpParameters: SfuRtpParameters;
+  }): Promise<SfuConsumerLike>;
   close(): void;
 }
 
@@ -183,9 +202,14 @@ export class RealtimeClient {
   private hasConnected = false;
   private readonly pageHideHandler?: () => void;
 
-  constructor(url: string, private readonly options: RealtimeClientOptions = {}) {
+  constructor(
+    url: string,
+    private readonly options: RealtimeClientOptions = {},
+  ) {
     this.socket = io(url, { autoConnect: false, closeOnBeforeunload: true, ...options });
-    this.socket.on("connect", () => { void this.onConnected(); });
+    this.socket.on("connect", () => {
+      void this.onConnected();
+    });
     this.socket.on("disconnect", (reason) => {
       this.handshake = undefined;
       this.endAllCalls("disconnected");
@@ -202,18 +226,38 @@ export class RealtimeClient {
     this.socket.on("typing:stop", (payload) => this.emit("typing:stop", payload));
     this.socket.on("message:delivered", (payload) => this.emit("message:delivered", payload));
     this.socket.on("call:incoming", (payload) => this.onCallIncoming(payload));
-    this.socket.on("call:accepted", (payload) => { void this.onCallAccepted(payload); });
+    this.socket.on("call:accepted", (payload) => {
+      void this.onCallAccepted(payload);
+    });
     this.socket.on("call:rejected", (payload) => this.onCallRejected(payload));
     this.socket.on("call:ended", (payload) => this.onCallEnded(payload));
     this.socket.on("group:call:incoming", (payload) => this.onGroupCallIncoming(payload));
     this.socket.on("group:call:participant-joined", (payload) => this.onGroupParticipantJoined(payload));
     this.socket.on("group:call:participant-left", (payload) => this.onGroupParticipantLeft(payload));
-    this.socket.on("webrtc:offer", (payload) => { this.emit("webrtc:offer", payload); void this.onOffer(payload); });
-    this.socket.on("webrtc:answer", (payload) => { this.emit("webrtc:answer", payload); void this.onAnswer(payload); });
-    this.socket.on("webrtc:ice-candidate", (payload) => { this.emit("webrtc:ice-candidate", payload); void this.onIceCandidate(payload); });
-    this.socket.on("group:webrtc:offer", (payload) => { this.emit("group:webrtc:offer", payload); void this.onGroupOffer(payload); });
-    this.socket.on("group:webrtc:answer", (payload) => { this.emit("group:webrtc:answer", payload); void this.onGroupAnswer(payload); });
-    this.socket.on("group:webrtc:ice-candidate", (payload) => { this.emit("group:webrtc:ice-candidate", payload); void this.onGroupIceCandidate(payload); });
+    this.socket.on("webrtc:offer", (payload) => {
+      this.emit("webrtc:offer", payload);
+      void this.onOffer(payload);
+    });
+    this.socket.on("webrtc:answer", (payload) => {
+      this.emit("webrtc:answer", payload);
+      void this.onAnswer(payload);
+    });
+    this.socket.on("webrtc:ice-candidate", (payload) => {
+      this.emit("webrtc:ice-candidate", payload);
+      void this.onIceCandidate(payload);
+    });
+    this.socket.on("group:webrtc:offer", (payload) => {
+      this.emit("group:webrtc:offer", payload);
+      void this.onGroupOffer(payload);
+    });
+    this.socket.on("group:webrtc:answer", (payload) => {
+      this.emit("group:webrtc:answer", payload);
+      void this.onGroupAnswer(payload);
+    });
+    this.socket.on("group:webrtc:ice-candidate", (payload) => {
+      this.emit("group:webrtc:ice-candidate", payload);
+      void this.onGroupIceCandidate(payload);
+    });
     this.socket.on("sfu:producer-added", (payload) => this.onSfuProducerAdded(payload));
     this.socket.on("sfu:producer-removed", (payload) => this.onSfuProducerRemoved(payload));
     if (typeof window !== "undefined") {
@@ -222,16 +266,25 @@ export class RealtimeClient {
     }
   }
 
-  connect(): void { this.socket.connect(); }
-  disconnect(): void { this.socket.disconnect(); this.handshake = undefined; this.endAllCalls("disconnected"); }
+  connect(): void {
+    this.socket.connect();
+  }
+  disconnect(): void {
+    this.socket.disconnect();
+    this.handshake = undefined;
+    this.endAllCalls("disconnected");
+  }
   destroy(): void {
-    if (this.pageHideHandler && typeof window !== "undefined") window.removeEventListener("pagehide", this.pageHideHandler);
+    if (this.pageHideHandler && typeof window !== "undefined")
+      window.removeEventListener("pagehide", this.pageHideHandler);
     this.disconnect();
     for (const call of this.calls.values()) this.releaseCall(call, false);
     this.calls.clear();
     this.listeners.clear();
   }
-  get connected(): boolean { return this.socket.connected; }
+  get connected(): boolean {
+    return this.socket.connected;
+  }
 
   on<T extends keyof ClientEvents>(event: T, listener: Listener<T>): () => void {
     const current = this.listeners.get(event) ?? new Set();
@@ -240,22 +293,32 @@ export class RealtimeClient {
     return () => current.delete(listener as (...args: never[]) => void);
   }
 
-  async joinRoom(roomId: string): Promise<void> { await this.roomRequest("room:join", { roomId }); this.desiredRooms.add(roomId); }
-  async leaveRoom(roomId: string): Promise<void> { await this.roomRequest("room:leave", { roomId }); this.desiredRooms.delete(roomId); }
+  async joinRoom(roomId: string): Promise<void> {
+    await this.roomRequest("room:join", { roomId });
+    this.desiredRooms.add(roomId);
+  }
+  async leaveRoom(roomId: string): Promise<void> {
+    await this.roomRequest("room:leave", { roomId });
+    this.desiredRooms.delete(roomId);
+  }
   async sendMessage(roomId: string, content: string, clientMessageId?: string): Promise<RealtimeMessage> {
     await this.ensureHandshake();
-    return new Promise((resolve, reject) => this.socket.emit("message:send", { roomId, content, clientMessageId }, (result) => {
-      if (result.ok) resolve(result.data);
-      else reject(new Error(`${result.error.code}: ${result.error.message}`));
-    }));
+    return new Promise((resolve, reject) =>
+      this.socket.emit("message:send", { roomId, content, clientMessageId }, (result) => {
+        if (result.ok) resolve(result.data);
+        else reject(new Error(`${result.error.code}: ${result.error.message}`));
+      }),
+    );
   }
 
   async setTyping(roomId: string, isTyping: boolean): Promise<void> {
     await this.ensureHandshake();
-    return new Promise((resolve, reject) => this.socket.emit("typing:set", { roomId, isTyping }, (result) => {
-      if (result.ok) resolve();
-      else reject(new Error(`${result.error.code}: ${result.error.message}`));
-    }));
+    return new Promise((resolve, reject) =>
+      this.socket.emit("typing:set", { roomId, isTyping }, (result) => {
+        if (result.ok) resolve();
+        else reject(new Error(`${result.error.code}: ${result.error.message}`));
+      }),
+    );
   }
 
   /** Starts a one-to-one audio call with the single other user currently in the room. */
@@ -290,8 +353,20 @@ export class RealtimeClient {
 
   /** Starts a call without acquiring media, for custom WebRTC integrations. */
   async startCall(roomId: string, mediaType: CallMediaType = "audio"): Promise<RealtimeCall> {
-    const result = await this.request<{ callId: string; roomId: string; recipientId: string }>("call:start", { roomId, mediaType });
-    const call: ManagedCall = { id: result.callId, roomId: result.roomId, isGroup: false, remoteUserId: result.recipientId, participantIds: [], mediaType, state: "ringing", pendingCandidates: [] };
+    const result = await this.request<{ callId: string; roomId: string; recipientId: string }>("call:start", {
+      roomId,
+      mediaType,
+    });
+    const call: ManagedCall = {
+      id: result.callId,
+      roomId: result.roomId,
+      isGroup: false,
+      remoteUserId: result.recipientId,
+      participantIds: [],
+      mediaType,
+      state: "ringing",
+      pendingCandidates: [],
+    };
     this.calls.set(call.id, call);
     this.emit("call:state", this.snapshot(call));
     return this.snapshot(call);
@@ -334,13 +409,19 @@ export class RealtimeClient {
     const call = this.requireCall(callId);
     if (call.isGroup && call.mediaMode === "sfu") {
       if (!call.sfu?.sendTransport) throw new Error("Screen sharing is available after the SFU call is set up.");
-    } else if (call.isGroup ? (!call.connections || call.connections.size === 0) : !call.connection) {
+    } else if (call.isGroup ? !call.connections || call.connections.size === 0 : !call.connection) {
       throw new Error("Screen sharing is available after the call connects.");
     }
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia) throw new Error("Screen sharing requires browser display media devices.");
-    const screenStream = await navigator.mediaDevices.getDisplayMedia(this.options.screenShareConstraints ?? { video: true, audio: false });
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia)
+      throw new Error("Screen sharing requires browser display media devices.");
+    const screenStream = await navigator.mediaDevices.getDisplayMedia(
+      this.options.screenShareConstraints ?? { video: true, audio: false },
+    );
     const screenTrack = screenStream.getVideoTracks()[0];
-    if (!screenTrack) { screenStream.getTracks().forEach((track) => track.stop()); throw new Error("No screen video track was selected."); }
+    if (!screenTrack) {
+      screenStream.getTracks().forEach((track) => track.stop());
+      throw new Error("No screen video track was selected.");
+    }
     call.screenStream?.getTracks().forEach((track) => track.stop());
     call.screenStream = screenStream;
     if (call.isGroup && call.mediaMode === "sfu") {
@@ -360,7 +441,9 @@ export class RealtimeClient {
       else call.connection!.addTrack(screenTrack, screenStream);
       await this.renegotiate(call);
     }
-    screenTrack.onended = () => { if (call.screenStream === screenStream) void this.stopScreenShare(call.id).catch(() => undefined); };
+    screenTrack.onended = () => {
+      if (call.screenStream === screenStream) void this.stopScreenShare(call.id).catch(() => undefined);
+    };
     this.emit("call:state", this.snapshot(call));
     return screenStream;
   }
@@ -442,8 +525,16 @@ export class RealtimeClient {
     const result = await this.request<GroupCallResult>("call:start-group", { roomId, mediaType });
     this.selfId = result.selfId;
     const call: ManagedCall = {
-      id: result.callId, roomId: result.roomId, isGroup: true, selfId: result.selfId, callerId: result.selfId,
-      participantIds: result.participantIds, mediaType, mediaMode: result.mediaMode, state: "ringing", pendingCandidates: []
+      id: result.callId,
+      roomId: result.roomId,
+      isGroup: true,
+      selfId: result.selfId,
+      callerId: result.selfId,
+      participantIds: result.participantIds,
+      mediaType,
+      mediaMode: result.mediaMode,
+      state: "ringing",
+      pendingCandidates: [],
     };
     this.calls.set(call.id, call);
     this.emit("call:state", this.snapshot(call));
@@ -508,14 +599,26 @@ export class RealtimeClient {
   }
 
   /** Advanced signaling API for applications that manage their own RTCPeerConnection. */
-  async sendOffer(callId: string, description: WebRtcSessionDescription): Promise<void> { await this.request("webrtc:offer", { callId, description }); }
-  async sendAnswer(callId: string, description: WebRtcSessionDescription): Promise<void> { await this.request("webrtc:answer", { callId, description }); }
-  async sendIceCandidate(callId: string, candidate: WebRtcIceCandidate): Promise<void> { await this.request("webrtc:ice-candidate", { callId, candidate }); }
+  async sendOffer(callId: string, description: WebRtcSessionDescription): Promise<void> {
+    await this.request("webrtc:offer", { callId, description });
+  }
+  async sendAnswer(callId: string, description: WebRtcSessionDescription): Promise<void> {
+    await this.request("webrtc:answer", { callId, description });
+  }
+  async sendIceCandidate(callId: string, candidate: WebRtcIceCandidate): Promise<void> {
+    await this.request("webrtc:ice-candidate", { callId, candidate });
+  }
 
   /** Advanced group-call signaling API for applications that manage their own RTCPeerConnections. */
-  sendGroupOffer(callId: string, targetId: string, description: WebRtcSessionDescription): Promise<void> { return this.request("group:webrtc:offer", { callId, targetId, description }); }
-  sendGroupAnswer(callId: string, targetId: string, description: WebRtcSessionDescription): Promise<void> { return this.request("group:webrtc:answer", { callId, targetId, description }); }
-  sendGroupIceCandidate(callId: string, targetId: string, candidate: WebRtcIceCandidate): Promise<void> { return this.request("group:webrtc:ice-candidate", { callId, targetId, candidate }); }
+  sendGroupOffer(callId: string, targetId: string, description: WebRtcSessionDescription): Promise<void> {
+    return this.request("group:webrtc:offer", { callId, targetId, description });
+  }
+  sendGroupAnswer(callId: string, targetId: string, description: WebRtcSessionDescription): Promise<void> {
+    return this.request("group:webrtc:answer", { callId, targetId, description });
+  }
+  sendGroupIceCandidate(callId: string, targetId: string, candidate: WebRtcIceCandidate): Promise<void> {
+    return this.request("group:webrtc:ice-candidate", { callId, targetId, candidate });
+  }
 
   /** Prepares an SFU-mode group call: loads router capabilities and creates send/receive transports. */
   async setupSfuCall(callId: string): Promise<RealtimeCall> {
@@ -532,16 +635,31 @@ export class RealtimeClient {
     const recvTransport = device.createRecvTransport(this.transportParams(recvParams));
     this.bindSfuTransport(call, sendTransport);
     this.bindSfuTransport(call, recvTransport);
-    call.sfu = { device, rtpCapabilities: capabilities.rtpCapabilities, sendTransport, recvTransport, producers: new Map(), consumers: new Map(), consumersByProducer: new Map(), consumedProducers: new Set() };
+    call.sfu = {
+      device,
+      rtpCapabilities: capabilities.rtpCapabilities,
+      sendTransport,
+      recvTransport,
+      producers: new Map(),
+      consumers: new Map(),
+      consumersByProducer: new Map(),
+      consumedProducers: new Set(),
+    };
     if (this.options.sfuAutoConsume !== false) {
-      await Promise.all([...(call.sfuProducers?.values() ?? [])].map((event) => this.autoConsumeSfuProducer(call, event.producerId)));
+      await Promise.all(
+        [...(call.sfuProducers?.values() ?? [])].map((event) => this.autoConsumeSfuProducer(call, event.producerId)),
+      );
     }
     this.emit("call:state", this.snapshot(call));
     return this.snapshot(call);
   }
 
   /** Publishes a local track to the SFU and returns the server producerId. */
-  async publishSfuTrack(callId: string, track: MediaStreamTrack, appData?: Record<string, unknown>): Promise<{ producerId: string }> {
+  async publishSfuTrack(
+    callId: string,
+    track: MediaStreamTrack,
+    appData?: Record<string, unknown>,
+  ): Promise<{ producerId: string }> {
     const call = this.requireCall(callId);
     if (!call.sfu?.sendTransport) throw new Error("Set up the SFU call before publishing. Call setupSfuCall first.");
     const producer = await call.sfu.sendTransport.produce({ track, appData });
@@ -550,13 +668,32 @@ export class RealtimeClient {
   }
 
   /** Subscribes to a remote producer and returns the consumed track. */
-  async consumeSfuProducer(callId: string, producerId: string): Promise<{ consumerId: string; track: MediaStreamTrack; kind: "audio" | "video"; peerId: string }> {
+  async consumeSfuProducer(
+    callId: string,
+    producerId: string,
+  ): Promise<{ consumerId: string; track: MediaStreamTrack; kind: "audio" | "video"; peerId: string }> {
     const call = this.requireCall(callId);
     if (!call.sfu?.recvTransport) throw new Error("Set up the SFU call before consuming. Call setupSfuCall first.");
     const existing = call.sfu.consumersByProducer.get(producerId);
-    if (existing) return { consumerId: existing.id, track: existing.track, kind: existing.kind, peerId: call.sfuProducers?.get(producerId)?.peerId ?? "" };
-    const result = await this.request<SfuConsumerResult>("sfu:consume", { callId, transportId: call.sfu.recvTransport.id, producerId, rtpCapabilities: call.sfu.rtpCapabilities });
-    const consumer = await call.sfu.recvTransport.consume({ id: result.consumerId, producerId: result.producerId, kind: result.kind, rtpParameters: result.rtpParameters });
+    if (existing)
+      return {
+        consumerId: existing.id,
+        track: existing.track,
+        kind: existing.kind,
+        peerId: call.sfuProducers?.get(producerId)?.peerId ?? "",
+      };
+    const result = await this.request<SfuConsumerResult>("sfu:consume", {
+      callId,
+      transportId: call.sfu.recvTransport.id,
+      producerId,
+      rtpCapabilities: call.sfu.rtpCapabilities,
+    });
+    const consumer = await call.sfu.recvTransport.consume({
+      id: result.consumerId,
+      producerId: result.producerId,
+      kind: result.kind,
+      rtpParameters: result.rtpParameters,
+    });
     call.sfu.consumers.set(consumer.id, consumer);
     call.sfu.consumersByProducer.set(producerId, consumer);
     call.sfu.consumedProducers.add(producerId);
@@ -585,8 +722,9 @@ export class RealtimeClient {
   /** Auto-consume used by the high-level call path; no-ops for producers already consumed. */
   private async autoConsumeSfuProducer(call: ManagedCall, producerId: string): Promise<void> {
     if (!call.sfu || call.sfu.consumedProducers.has(producerId)) return;
-    try { await this.consumeSfuProducer(call.id, producerId); }
-    catch (error) {
+    try {
+      await this.consumeSfuProducer(call.id, producerId);
+    } catch (error) {
       call.sfu?.consumedProducers.delete(producerId);
       this.emit("error", error instanceof Error ? error : new Error("Unable to consume the SFU producer."));
     }
@@ -596,8 +734,11 @@ export class RealtimeClient {
   private async publishSfuStream(call: ManagedCall, stream: MediaStream): Promise<void> {
     if (call.mediaMode !== "sfu" || !call.sfu?.sendTransport) return;
     for (const track of stream.getTracks()) {
-      try { await this.publishSfuTrack(call.id, track); }
-      catch (error) { this.emit("error", error instanceof Error ? error : new Error("Unable to publish an SFU track.")); }
+      try {
+        await this.publishSfuTrack(call.id, track);
+      } catch (error) {
+        this.emit("error", error instanceof Error ? error : new Error("Unable to publish an SFU track."));
+      }
     }
   }
 
@@ -606,33 +747,72 @@ export class RealtimeClient {
       await this.ensureHandshake();
       await Promise.all([...this.desiredRooms].map((roomId) => this.roomRequest("room:join", { roomId })));
       if (this.hasConnected) this.emit("reconnected");
-      else { this.hasConnected = true; this.emit("connected"); }
+      else {
+        this.hasConnected = true;
+        this.emit("connected");
+      }
+    } catch (error) {
+      this.emit("error", error instanceof Error ? error : new Error("Protocol handshake failed."));
+      this.socket.disconnect();
     }
-    catch (error) { this.emit("error", error instanceof Error ? error : new Error("Protocol handshake failed.")); this.socket.disconnect(); }
   }
 
   private async ensureHandshake(): Promise<void> {
-    if (!this.handshake) this.handshake = new Promise<void>((resolve, reject) => {
-      this.socket.emit("protocol:handshake", PROTOCOL_VERSION, (result) => result.ok ? resolve() : reject(new Error(`${result.error.code}: ${result.error.message}`)));
-    });
+    if (!this.handshake)
+      this.handshake = new Promise<void>((resolve, reject) => {
+        this.socket.emit("protocol:handshake", PROTOCOL_VERSION, (result) =>
+          result.ok ? resolve() : reject(new Error(`${result.error.code}: ${result.error.message}`)),
+        );
+      });
     return this.handshake;
   }
 
   private async roomRequest(event: "room:join" | "room:leave", input: JoinRoomInput): Promise<void> {
     await this.ensureHandshake();
-    return new Promise((resolve, reject) => this.socket.emit(event, input, (result) => {
-      if (result.ok) resolve();
-      else reject(new Error(`${result.error.code}: ${result.error.message}`));
-    }));
+    return new Promise((resolve, reject) =>
+      this.socket.emit(event, input, (result) => {
+        if (result.ok) resolve();
+        else reject(new Error(`${result.error.code}: ${result.error.message}`));
+      }),
+    );
   }
 
-  private async request<T>(event: "call:start" | "call:accept" | "call:reject" | "call:hangup" | "call:start-group" | "call:join" | "call:leave" | "webrtc:offer" | "webrtc:answer" | "webrtc:ice-candidate" | "group:webrtc:offer" | "group:webrtc:answer" | "group:webrtc:ice-candidate" | "sfu:rtp-capabilities" | "sfu:create-transport" | "sfu:connect-transport" | "sfu:produce" | "sfu:consume" | "sfu:resume-consumer" | "sfu:close-transport" | "sfu:close-producer" | "sfu:close-consumer", input: unknown): Promise<T> {
+  private async request<T>(
+    event:
+      | "call:start"
+      | "call:accept"
+      | "call:reject"
+      | "call:hangup"
+      | "call:start-group"
+      | "call:join"
+      | "call:leave"
+      | "webrtc:offer"
+      | "webrtc:answer"
+      | "webrtc:ice-candidate"
+      | "group:webrtc:offer"
+      | "group:webrtc:answer"
+      | "group:webrtc:ice-candidate"
+      | "sfu:rtp-capabilities"
+      | "sfu:create-transport"
+      | "sfu:connect-transport"
+      | "sfu:produce"
+      | "sfu:consume"
+      | "sfu:resume-consumer"
+      | "sfu:close-transport"
+      | "sfu:close-producer"
+      | "sfu:close-consumer",
+    input: unknown,
+  ): Promise<T> {
     await this.ensureHandshake();
-    const emit = this.socket as unknown as { emit: (name: string, payload: unknown, ack: (result: Result<T>) => void) => void };
-    return new Promise((resolve, reject) => emit.emit(event, input, (result) => {
-      if (result.ok) resolve(result.data);
-      else reject(new Error(`${result.error.code}: ${result.error.message}`));
-    }));
+    const emit = this.socket as unknown as {
+      emit: (name: string, payload: unknown, ack: (result: Result<T>) => void) => void;
+    };
+    return new Promise((resolve, reject) =>
+      emit.emit(event, input, (result) => {
+        if (result.ok) resolve(result.data);
+        else reject(new Error(`${result.error.code}: ${result.error.message}`));
+      }),
+    );
   }
 
   private onSfuProducerAdded(payload: SfuProducerAddedEvent): void {
@@ -641,7 +821,8 @@ export class RealtimeClient {
     call.sfuProducers ??= new Map();
     call.sfuProducers.set(payload.producerId, payload);
     this.emit("sfu:producer-added", this.snapshot(call), payload);
-    if (call.sfu?.recvTransport && this.options.sfuAutoConsume !== false) void this.autoConsumeSfuProducer(call, payload.producerId);
+    if (call.sfu?.recvTransport && this.options.sfuAutoConsume !== false)
+      void this.autoConsumeSfuProducer(call, payload.producerId);
   }
 
   private onSfuProducerRemoved(payload: SfuProducerRemovedEvent): void {
@@ -651,7 +832,11 @@ export class RealtimeClient {
     call.sfuProducers?.delete(payload.producerId);
     const consumer = call.sfu?.consumersByProducer.get(payload.producerId);
     if (consumer) {
-      try { consumer.close(); } catch { /* already closed */ }
+      try {
+        consumer.close();
+      } catch {
+        /* already closed */
+      }
       call.sfu?.consumers.delete(consumer.id);
       call.sfu?.consumersByProducer.delete(payload.producerId);
       call.sfu?.consumedProducers.delete(payload.producerId);
@@ -673,17 +858,32 @@ export class RealtimeClient {
   }
 
   private transportParams(params: SfuCreatedTransport): SfuClientTransportParams {
-    return { id: params.transportId, iceParameters: params.iceParameters, iceCandidates: params.iceCandidates, dtlsParameters: params.dtlsParameters };
+    return {
+      id: params.transportId,
+      iceParameters: params.iceParameters,
+      iceCandidates: params.iceCandidates,
+      dtlsParameters: params.dtlsParameters,
+    };
   }
 
   private bindSfuTransport(call: ManagedCall, transport: SfuTransportLike): void {
     transport.on("connect", ({ dtlsParameters }, callback, errback) => {
-      this.request<{ transportId: string }>("sfu:connect-transport", { callId: call.id, transportId: transport.id, dtlsParameters })
+      this.request<{ transportId: string }>("sfu:connect-transport", {
+        callId: call.id,
+        transportId: transport.id,
+        dtlsParameters,
+      })
         .then(() => callback())
         .catch((error) => errback(error instanceof Error ? error : new Error("Unable to connect the SFU transport.")));
     });
     transport.on("produce", ({ kind, rtpParameters, appData }, callback, errback) => {
-      this.request<SfuProducerResult>("sfu:produce", { callId: call.id, transportId: transport.id, kind, rtpParameters, appData })
+      this.request<SfuProducerResult>("sfu:produce", {
+        callId: call.id,
+        transportId: transport.id,
+        kind,
+        rtpParameters,
+        appData,
+      })
         .then((result) => callback({ id: result.producerId }))
         .catch((error) => errback(error instanceof Error ? error : new Error("Unable to publish the track.")));
     });
@@ -693,7 +893,11 @@ export class RealtimeClient {
   private async closeSfuProducer(call: ManagedCall, producerId: string): Promise<void> {
     const producer = call.sfu?.producers.get(producerId);
     if (producer) {
-      try { producer.close(); } catch { /* already closed */ }
+      try {
+        producer.close();
+      } catch {
+        /* already closed */
+      }
       call.sfu?.producers.delete(producerId);
     }
     void this.request("sfu:close-producer", { callId: call.id, producerId }).catch(() => undefined);
@@ -705,22 +909,43 @@ export class RealtimeClient {
     call.sfuProducers = undefined;
     if (!sfu) return;
     for (const producer of sfu.producers.values()) {
-      try { producer.close(); } catch { /* already closed */ }
+      try {
+        producer.close();
+      } catch {
+        /* already closed */
+      }
       void this.request("sfu:close-producer", { callId: call.id, producerId: producer.id }).catch(() => undefined);
     }
     for (const consumer of sfu.consumers.values()) {
-      try { consumer.close(); } catch { /* already closed */ }
+      try {
+        consumer.close();
+      } catch {
+        /* already closed */
+      }
       void this.request("sfu:close-consumer", { callId: call.id, consumerId: consumer.id }).catch(() => undefined);
     }
     for (const transport of [sfu.sendTransport, sfu.recvTransport]) {
       if (!transport) continue;
-      try { transport.close(); } catch { /* already closed */ }
+      try {
+        transport.close();
+      } catch {
+        /* already closed */
+      }
       void this.request("sfu:close-transport", { callId: call.id, transportId: transport.id }).catch(() => undefined);
     }
   }
 
   private onCallIncoming(payload: CallIncomingEvent): void {
-    const call: ManagedCall = { id: payload.callId, roomId: payload.roomId, isGroup: false, remoteUserId: payload.callerId, participantIds: [], mediaType: payload.mediaType, state: "ringing", pendingCandidates: [] };
+    const call: ManagedCall = {
+      id: payload.callId,
+      roomId: payload.roomId,
+      isGroup: false,
+      remoteUserId: payload.callerId,
+      participantIds: [],
+      mediaType: payload.mediaType,
+      state: "ringing",
+      pendingCandidates: [],
+    };
     this.calls.set(call.id, call);
     this.emit("call:incoming", this.snapshot(call));
     this.emit("call:state", this.snapshot(call));
@@ -729,8 +954,16 @@ export class RealtimeClient {
   private onGroupCallIncoming(payload: GroupCallIncomingEvent): void {
     this.selfId = payload.selfId;
     const call: ManagedCall = {
-      id: payload.callId, roomId: payload.roomId, isGroup: true, selfId: payload.selfId, callerId: payload.callerId,
-      participantIds: payload.participantIds, mediaType: payload.mediaType, mediaMode: payload.mediaMode, state: "ringing", pendingCandidates: []
+      id: payload.callId,
+      roomId: payload.roomId,
+      isGroup: true,
+      selfId: payload.selfId,
+      callerId: payload.callerId,
+      participantIds: payload.participantIds,
+      mediaType: payload.mediaType,
+      mediaMode: payload.mediaMode,
+      state: "ringing",
+      pendingCandidates: [],
     };
     this.calls.set(call.id, call);
     this.emit("call:incoming", this.snapshot(call));
@@ -743,7 +976,8 @@ export class RealtimeClient {
     this.selfId = payload.selfId;
     call.selfId = payload.selfId;
     call.participantIds = payload.participantIds;
-    if (payload.participantId !== payload.selfId && call.localStream && call.mediaMode !== "sfu") this.groupConnection(call, payload.participantId);
+    if (payload.participantId !== payload.selfId && call.localStream && call.mediaMode !== "sfu")
+      this.groupConnection(call, payload.participantId);
     if (call.mediaMode === "sfu" && call.state !== "active") this.setCallState(call, "active");
     this.emit("call:state", this.snapshot(call));
     this.emit("group:call:participant-joined", this.snapshot(call), payload.participantId);
@@ -766,7 +1000,10 @@ export class RealtimeClient {
     this.emit("call:accepted", this.snapshot(call));
     // A call created with startCall is intentionally left to the application's
     // advanced signaling integration; startAudioCall supplies a local stream.
-    if (!call.localStream) { this.setCallState(call, "connecting"); return; }
+    if (!call.localStream) {
+      this.setCallState(call, "connecting");
+      return;
+    }
     try {
       this.createPeerConnection(call);
       this.setCallState(call, "connecting");
@@ -785,7 +1022,13 @@ export class RealtimeClient {
     this.emit("call:rejected", this.snapshot(call));
     // A rejected one-to-one call ends. A rejected group invite only removes that
     // invitee; the call continues for the remaining members.
-    if (!call.isGroup) this.releaseCall(call, true, { callId: call.id, roomId: call.roomId, endedById: payload.recipientId, reason: "rejected" });
+    if (!call.isGroup)
+      this.releaseCall(call, true, {
+        callId: call.id,
+        roomId: call.roomId,
+        endedById: payload.recipientId,
+        reason: "rejected",
+      });
   }
 
   private onCallEnded(payload: CallEndedEvent): void {
@@ -803,11 +1046,14 @@ export class RealtimeClient {
       const answer = await call.connection.createAnswer();
       await call.connection.setLocalDescription(answer);
       await this.sendAnswer(call.id, this.description(call.connection.localDescription));
-    } catch (reason) { this.emit("error", reason instanceof Error ? reason : new Error("Unable to answer the WebRTC offer.")); }
+    } catch (reason) {
+      this.emit("error", reason instanceof Error ? reason : new Error("Unable to answer the WebRTC offer."));
+    }
   }
 
   private async renegotiate(call: ManagedCall): Promise<void> {
-    if (!call.connection || call.connection.signalingState !== "stable") throw new Error("The call is busy negotiating. Try screen sharing again in a moment.");
+    if (!call.connection || call.connection.signalingState !== "stable")
+      throw new Error("The call is busy negotiating. Try screen sharing again in a moment.");
     const offer = await call.connection.createOffer();
     await call.connection.setLocalDescription(offer);
     await this.sendOffer(call.id, this.description(call.connection.localDescription));
@@ -816,16 +1062,26 @@ export class RealtimeClient {
   private async onAnswer(payload: { callId: string; description: WebRtcSessionDescription }): Promise<void> {
     const call = this.calls.get(payload.callId);
     if (!call?.connection) return;
-    try { await call.connection.setRemoteDescription(payload.description); await this.flushCandidates(call); }
-    catch (reason) { this.emit("error", reason instanceof Error ? reason : new Error("Unable to apply the WebRTC answer.")); }
+    try {
+      await call.connection.setRemoteDescription(payload.description);
+      await this.flushCandidates(call);
+    } catch (reason) {
+      this.emit("error", reason instanceof Error ? reason : new Error("Unable to apply the WebRTC answer."));
+    }
   }
 
   private async onIceCandidate(payload: WebRtcIceCandidateEvent): Promise<void> {
     const call = this.calls.get(payload.callId);
     if (!call?.connection) return;
-    if (!call.connection.remoteDescription) { call.pendingCandidates.push(payload.candidate); return; }
-    try { await call.connection.addIceCandidate(payload.candidate); }
-    catch (reason) { this.emit("error", reason instanceof Error ? reason : new Error("Unable to add the ICE candidate.")); }
+    if (!call.connection.remoteDescription) {
+      call.pendingCandidates.push(payload.candidate);
+      return;
+    }
+    try {
+      await call.connection.addIceCandidate(payload.candidate);
+    } catch (reason) {
+      this.emit("error", reason instanceof Error ? reason : new Error("Unable to add the ICE candidate."));
+    }
   }
 
   private async onGroupOffer(payload: GroupWebRtcDescriptionEvent): Promise<void> {
@@ -838,15 +1094,21 @@ export class RealtimeClient {
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
       await this.sendGroupAnswer(call.id, payload.senderId, this.description(connection.localDescription));
-    } catch (reason) { this.emit("error", reason instanceof Error ? reason : new Error("Unable to answer the WebRTC offer.")); }
+    } catch (reason) {
+      this.emit("error", reason instanceof Error ? reason : new Error("Unable to answer the WebRTC offer."));
+    }
   }
 
   private async onGroupAnswer(payload: GroupWebRtcDescriptionEvent): Promise<void> {
     const call = this.calls.get(payload.callId);
     const connection = call?.connections?.get(payload.senderId);
     if (!call?.isGroup || !connection) return;
-    try { await connection.setRemoteDescription(payload.description); await this.flushPeerCandidates(call, payload.senderId); }
-    catch (reason) { this.emit("error", reason instanceof Error ? reason : new Error("Unable to apply the WebRTC answer.")); }
+    try {
+      await connection.setRemoteDescription(payload.description);
+      await this.flushPeerCandidates(call, payload.senderId);
+    } catch (reason) {
+      this.emit("error", reason instanceof Error ? reason : new Error("Unable to apply the WebRTC answer."));
+    }
   }
 
   private async onGroupIceCandidate(payload: GroupWebRtcIceCandidateEvent): Promise<void> {
@@ -860,8 +1122,11 @@ export class RealtimeClient {
       call.pendingByPeer.set(payload.senderId, pending);
       return;
     }
-    try { await connection.addIceCandidate(payload.candidate); }
-    catch (reason) { this.emit("error", reason instanceof Error ? reason : new Error("Unable to add the ICE candidate.")); }
+    try {
+      await connection.addIceCandidate(payload.candidate);
+    } catch (reason) {
+      this.emit("error", reason instanceof Error ? reason : new Error("Unable to add the ICE candidate."));
+    }
   }
 
   private createPeerConnection(call: ManagedCall): void {
@@ -870,7 +1135,12 @@ export class RealtimeClient {
     const connection = new RTCPeerConnection({ iceServers: this.options.iceServers });
     call.connection = connection;
     for (const track of call.localStream?.getTracks() ?? []) connection.addTrack(track, call.localStream!);
-    connection.onicecandidate = (event) => { if (event.candidate) void this.sendIceCandidate(call.id, this.candidate(event.candidate)).catch((reason) => this.emit("error", reason instanceof Error ? reason : new Error("Unable to send an ICE candidate."))); };
+    connection.onicecandidate = (event) => {
+      if (event.candidate)
+        void this.sendIceCandidate(call.id, this.candidate(event.candidate)).catch((reason) =>
+          this.emit("error", reason instanceof Error ? reason : new Error("Unable to send an ICE candidate.")),
+        );
+    };
     connection.ontrack = (event) => {
       const stream = event.streams[0] ?? new MediaStream([event.track]);
       call.remoteStream = stream;
@@ -899,7 +1169,10 @@ export class RealtimeClient {
     call.connections.set(peerId, connection);
     for (const track of call.localStream?.getTracks() ?? []) connection.addTrack(track, call.localStream!);
     connection.onicecandidate = (event) => {
-      if (event.candidate) void this.sendGroupIceCandidate(call.id, peerId, this.candidate(event.candidate)).catch((reason) => this.emit("error", reason instanceof Error ? reason : new Error("Unable to send an ICE candidate.")));
+      if (event.candidate)
+        void this.sendGroupIceCandidate(call.id, peerId, this.candidate(event.candidate)).catch((reason) =>
+          this.emit("error", reason instanceof Error ? reason : new Error("Unable to send an ICE candidate.")),
+        );
     };
     connection.ontrack = (event) => {
       const stream = event.streams[0] ?? new MediaStream([event.track]);
@@ -936,26 +1209,30 @@ export class RealtimeClient {
   }
 
   private async renegotiatePeer(call: ManagedCall, peerId: string, connection: RTCPeerConnection): Promise<void> {
-    if (connection.signalingState !== "stable") throw new Error("A peer connection is busy negotiating. Try screen sharing again in a moment.");
+    if (connection.signalingState !== "stable")
+      throw new Error("A peer connection is busy negotiating. Try screen sharing again in a moment.");
     const offer = await connection.createOffer();
     await connection.setLocalDescription(offer);
     await this.sendGroupOffer(call.id, peerId, this.description(connection.localDescription));
   }
 
   private getAudioStream(): Promise<MediaStream> {
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return Promise.reject(new Error("Audio calls require browser media devices."));
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia)
+      return Promise.reject(new Error("Audio calls require browser media devices."));
     return navigator.mediaDevices.getUserMedia(this.options.audioConstraints ?? { audio: true, video: false });
   }
 
   private getVideoStream(): Promise<MediaStream> {
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return Promise.reject(new Error("Video calls require browser media devices."));
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia)
+      return Promise.reject(new Error("Video calls require browser media devices."));
     return navigator.mediaDevices.getUserMedia(this.options.videoConstraints ?? { audio: true, video: true });
   }
 
   private requireCall(callId: string, expectedState?: RealtimeCallState): ManagedCall {
     const call = this.calls.get(callId);
     if (!call || call.state === "ended") throw new Error("The call no longer exists.");
-    if (expectedState && call.state !== expectedState) throw new Error(`The call is ${call.state}, not ${expectedState}.`);
+    if (expectedState && call.state !== expectedState)
+      throw new Error(`The call is ${call.state}, not ${expectedState}.`);
     return call;
   }
 
@@ -976,7 +1253,10 @@ export class RealtimeClient {
     call.screenStreams = undefined;
     const connection = call.connection;
     call.connection = undefined;
-    if (connection) { connection.onconnectionstatechange = null; connection.close(); }
+    if (connection) {
+      connection.onconnectionstatechange = null;
+      connection.close();
+    }
     void this.closeSfuMedia(call);
     call.localStream?.getTracks().forEach((track) => track.stop());
     call.screenStream?.getTracks().forEach((track) => track.stop());
@@ -997,25 +1277,44 @@ export class RealtimeClient {
 
   private snapshot(call: ManagedCall): RealtimeCall {
     return {
-      id: call.id, roomId: call.roomId, isGroup: call.isGroup, remoteUserId: call.remoteUserId, callerId: call.callerId,
-      participantIds: call.participantIds, mediaType: call.mediaType, state: call.state, localStream: call.localStream,
-      remoteStream: call.remoteStream, remoteStreams: call.remoteStreams, screenStreams: call.screenStreams, isScreenSharing: Boolean(call.screenStream),
-      mediaMode: call.mediaMode
+      id: call.id,
+      roomId: call.roomId,
+      isGroup: call.isGroup,
+      remoteUserId: call.remoteUserId,
+      callerId: call.callerId,
+      participantIds: call.participantIds,
+      mediaType: call.mediaType,
+      state: call.state,
+      localStream: call.localStream,
+      remoteStream: call.remoteStream,
+      remoteStreams: call.remoteStreams,
+      screenStreams: call.screenStreams,
+      isScreenSharing: Boolean(call.screenStream),
+      mediaMode: call.mediaMode,
     };
   }
 
   private description(value: RTCSessionDescription | null): WebRtcSessionDescription {
-    if (!value?.sdp || (value.type !== "offer" && value.type !== "answer")) throw new Error("WebRTC did not create a valid session description.");
+    if (!value?.sdp || (value.type !== "offer" && value.type !== "answer"))
+      throw new Error("WebRTC did not create a valid session description.");
     return { type: value.type, sdp: value.sdp };
   }
 
   private candidate(value: RTCIceCandidate): WebRtcIceCandidate {
-    return { candidate: value.candidate, sdpMid: value.sdpMid, sdpMLineIndex: value.sdpMLineIndex, usernameFragment: value.usernameFragment };
+    return {
+      candidate: value.candidate,
+      sdpMid: value.sdpMid,
+      sdpMLineIndex: value.sdpMLineIndex,
+      usernameFragment: value.usernameFragment,
+    };
   }
 
   private emit<T extends keyof ClientEvents>(event: T, ...args: Parameters<ClientEvents[T]>): void {
-    this.listeners.get(event)?.forEach((listener) => (listener as (...values: Parameters<ClientEvents[T]>) => void)(...args));
+    this.listeners
+      .get(event)
+      ?.forEach((listener) => (listener as (...values: Parameters<ClientEvents[T]>) => void)(...args));
   }
 }
 
-export const createRealtimeClient = (url: string, options?: RealtimeClientOptions): RealtimeClient => new RealtimeClient(url, options);
+export const createRealtimeClient = (url: string, options?: RealtimeClientOptions): RealtimeClient =>
+  new RealtimeClient(url, options);

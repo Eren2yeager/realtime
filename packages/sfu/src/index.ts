@@ -10,7 +10,7 @@ import type {
   RtpCodecCapability,
   RtpParameters,
   WebRtcTransport,
-  Worker
+  Worker,
 } from "mediasoup/types";
 
 /** A local (or announced) IP address the SFU listens on for media. */
@@ -87,8 +87,8 @@ const DEFAULT_MEDIA_CODECS: RtpCodecCapability[] = [
     mimeType: "video/H264",
     clockRate: 90000,
     parameters: { "packetization-mode": 1, "profile-level-id": "42e01f", "level-asymmetry-allowed": 1 },
-    preferredPayloadType: 102
-  }
+    preferredPayloadType: 102,
+  },
 ];
 
 /**
@@ -126,14 +126,14 @@ export class SfuRoom {
       enableTcp: true,
       preferUdp: true,
       ...(input.direction === "send" ? { initialAvailableOutgoingBitrate: 1_000_000 } : {}),
-      appData: { direction: input.direction, ...(input.appData ?? {}) }
+      appData: { direction: input.direction, ...(input.appData ?? {}) },
     });
     this.transports.set(transport.id, transport);
     return {
       transportId: transport.id,
       iceParameters: transport.iceParameters,
       iceCandidates: transport.iceCandidates,
-      dtlsParameters: transport.dtlsParameters
+      dtlsParameters: transport.dtlsParameters,
     };
   }
 
@@ -149,7 +149,7 @@ export class SfuRoom {
     const producer = await transport.produce({
       kind: input.kind,
       rtpParameters: input.rtpParameters,
-      appData: input.appData ?? {}
+      appData: input.appData ?? {},
     });
     this.producers.set(producer.id, producer);
     producer.on("@close", () => this.producers.delete(producer.id));
@@ -165,7 +165,7 @@ export class SfuRoom {
     const consumer = await transport.consume({
       producerId: input.producerId,
       rtpCapabilities: input.rtpCapabilities,
-      paused: true
+      paused: true,
     });
     this.consumers.set(consumer.id, consumer);
     consumer.on("@close", () => this.consumers.delete(consumer.id));
@@ -174,7 +174,7 @@ export class SfuRoom {
       producerId: consumer.producerId,
       kind: consumer.kind,
       rtpParameters: consumer.rtpParameters,
-      paused: consumer.paused
+      paused: consumer.paused,
     };
   }
 
@@ -222,11 +222,10 @@ export class SfuRoom {
   }
 
   private listenInfos(): Array<{ protocol: "udp" | "tcp"; ip: string; announcedIp?: string }> {
-    return this.listenIps
-      .flatMap(({ ip, announcedIp }) => [
-        { protocol: "udp" as const, ip, announcedIp },
-        { protocol: "tcp" as const, ip, announcedIp }
-      ]);
+    return this.listenIps.flatMap(({ ip, announcedIp }) => [
+      { protocol: "udp" as const, ip, announcedIp },
+      { protocol: "tcp" as const, ip, announcedIp },
+    ]);
   }
 }
 
@@ -254,7 +253,7 @@ export class SfuNode {
       const worker = await mediasoup.createWorker({
         rtcMinPort: this.options.rtcMinPort,
         rtcMaxPort: this.options.rtcMaxPort,
-        logLevel: this.options.logLevel ?? "warn"
+        logLevel: this.options.logLevel ?? "warn",
       });
       worker.on("died", (error) => {
         process.emitWarning(`mediasoup Worker died: ${error.message}`, { code: "SFU_WORKER_DIED" });

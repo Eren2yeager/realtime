@@ -9,18 +9,22 @@ const server = createRealtimeServer({
     const url = new URL(request.url, "http://localhost");
     return { userId: url.searchParams.get("userId") ?? "anonymous" };
   },
-  authorizeRoom: () => true
+  authorizeRoom: () => true,
 });
 
-const waitFor = (client, event, matches = () => true) => new Promise((resolve, reject) => {
-  const timeout = setTimeout(() => { unsubscribe(); reject(new Error(`Timed out waiting for ${event}`)); }, 5_000);
-  const unsubscribe = client.on(event, (payload) => {
-    if (!matches(payload)) return;
-    clearTimeout(timeout);
-    unsubscribe();
-    resolve(payload);
+const waitFor = (client, event, matches = () => true) =>
+  new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      reject(new Error(`Timed out waiting for ${event}`));
+    }, 5_000);
+    const unsubscribe = client.on(event, (payload) => {
+      if (!matches(payload)) return;
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve(payload);
+    });
   });
-});
 
 let exitCode = 0;
 try {
@@ -51,7 +55,11 @@ try {
   await bob.sendAnswer(started.id, { type: "answer", sdp: "test-answer" });
   assert.equal((await answerReceived).senderId, "bob");
   const candidateReceived = waitFor(bob, "webrtc:ice-candidate", (event) => event.callId === started.id);
-  await alice.sendIceCandidate(started.id, { candidate: "candidate:1 1 udp 1 127.0.0.1 9999 typ host", sdpMid: "0", sdpMLineIndex: 0 });
+  await alice.sendIceCandidate(started.id, {
+    candidate: "candidate:1 1 udp 1 127.0.0.1 9999 typ host",
+    sdpMid: "0",
+    sdpMLineIndex: 0,
+  });
   assert.equal((await candidateReceived).senderId, "alice");
 
   const ended = waitFor(alice, "call:ended", (call) => call.id === started.id);

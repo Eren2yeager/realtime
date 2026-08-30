@@ -20,7 +20,7 @@ const server = createExpressRealtime(app, {
     if (!userId) throw new Error("A userId query parameter is required.");
     return { userId };
   },
-  authorizeRoom: () => true
+  authorizeRoom: () => true,
 });
 
 await server.start();

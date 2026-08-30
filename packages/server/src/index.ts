@@ -27,7 +27,7 @@ import {
   type SfuProducerAddedEvent,
   type SfuProducerRemovedEvent,
   type SfuRtpCapabilities,
-  type SfuRtpParameters
+  type SfuRtpParameters,
 } from "@realtimesdk/core";
 
 type SocketData = { user: AuthenticatedUser; protocolAccepted: boolean };
@@ -73,10 +73,24 @@ export type SfuTransportParams = {
 export type SfuRoomHandle = {
   readonly roomId: string;
   readonly rtpCapabilities: SfuRtpCapabilities;
-  createTransport(input: { direction: SfuTransportDirection; appData?: Record<string, unknown> }): Promise<SfuTransportParams>;
+  createTransport(input: {
+    direction: SfuTransportDirection;
+    appData?: Record<string, unknown>;
+  }): Promise<SfuTransportParams>;
   connectTransport(transportId: string, dtlsParameters: SfuDtlsParameters): Promise<void>;
-  produce(input: { transportId: string; kind: "audio" | "video"; rtpParameters: SfuRtpParameters; appData?: Record<string, unknown> }): Promise<{ id: string; kind: "audio" | "video"; appData?: Record<string, unknown> }>;
-  consume(input: { transportId: string; producerId: string; rtpCapabilities: SfuRtpCapabilities }): Promise<{ id: string; producerId: string; kind: "audio" | "video"; rtpParameters: SfuRtpParameters; paused: boolean }>;
+  produce(input: {
+    transportId: string;
+    kind: "audio" | "video";
+    rtpParameters: SfuRtpParameters;
+    appData?: Record<string, unknown>;
+  }): Promise<{ id: string; kind: "audio" | "video"; appData?: Record<string, unknown> }>;
+  consume(input: { transportId: string; producerId: string; rtpCapabilities: SfuRtpCapabilities }): Promise<{
+    id: string;
+    producerId: string;
+    kind: "audio" | "video";
+    rtpParameters: SfuRtpParameters;
+    paused: boolean;
+  }>;
   resumeConsumer(consumerId: string): Promise<void>;
   closeProducer(producerId: string): void;
   closeConsumer(consumerId: string): void;
@@ -100,7 +114,11 @@ export type RealtimeServerOptions = {
   port?: number;
   cors?: { origin?: string | string[]; credentials?: boolean };
   authenticate: (request: IncomingMessage) => Promise<AuthenticatedUser> | AuthenticatedUser;
-  authorizeRoom?: (context: { user: AuthenticatedUser; roomId: string; action: RoomAction }) => Promise<boolean> | boolean;
+  authorizeRoom?: (context: {
+    user: AuthenticatedUser;
+    roomId: string;
+    action: RoomAction;
+  }) => Promise<boolean> | boolean;
   /** Time an unanswered call rings before it ends. Defaults to 30 seconds. */
   callTimeoutMs?: number;
   /** Optional SFU media-routing node. When set, group calls route media through it where useSfuForRoom allows. */
@@ -110,7 +128,8 @@ export type RealtimeServerOptions = {
 };
 
 const invalid = (message: string) => errorResult("INVALID_PAYLOAD", message);
-const validRoom = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0 && value.length <= 200;
+const validRoom = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0 && value.length <= 200;
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : "Unknown SFU error.");
 
 export class RealtimeServer {
@@ -168,10 +187,13 @@ export class RealtimeServer {
   }
 
   private registerSocket(socket: TypedSocket): void {
-    socket.on("disconnecting", () => { void this.announceDisconnect(socket); });
+    socket.on("disconnecting", () => {
+      void this.announceDisconnect(socket);
+    });
 
     socket.on("protocol:handshake", (version, ack) => {
-      if (version !== PROTOCOL_VERSION) return ack(errorResult("PROTOCOL_MISMATCH", `Expected protocol ${PROTOCOL_VERSION}.`));
+      if (version !== PROTOCOL_VERSION)
+        return ack(errorResult("PROTOCOL_MISMATCH", `Expected protocol ${PROTOCOL_VERSION}.`));
       socket.data.protocolAccepted = true;
       ack({ ok: true, data: { version: PROTOCOL_VERSION } });
     });
@@ -196,12 +218,18 @@ export class RealtimeServer {
         this.io.to(input.roomId).emit("user:offline", { roomId: input.roomId, userId: socket.data.user.userId });
       }
       for (const call of [...this.calls.values()]) {
-        if (call.roomId === input.roomId && (call.callerSocketId === socket.id || call.recipientSocketId === socket.id)) {
+        if (
+          call.roomId === input.roomId &&
+          (call.callerSocketId === socket.id || call.recipientSocketId === socket.id)
+        ) {
           this.finishCall(call, "room-left", socket.data.user.userId, false);
         }
       }
       for (const call of [...this.groupCalls.values()]) {
-        if (call.roomId === input.roomId && (call.participants.has(socket.data.user.userId) || call.invitees.has(socket.data.user.userId))) {
+        if (
+          call.roomId === input.roomId &&
+          (call.participants.has(socket.data.user.userId) || call.invitees.has(socket.data.user.userId))
+        ) {
           this.leaveGroupCall(call, socket.data.user.userId, "room-left");
         }
       }
@@ -210,14 +238,27 @@ export class RealtimeServer {
 
     socket.on("message:send", async (input, ack) => {
       if (!this.ready(socket, ack) || !this.validMessage(input, ack)) return;
-      if (!socket.rooms.has(input.roomId)) return ack(errorResult("NOT_IN_ROOM", "Join the room before sending a message."));
+      if (!socket.rooms.has(input.roomId))
+        return ack(errorResult("NOT_IN_ROOM", "Join the room before sending a message."));
       if (!(await this.allowed(socket, input.roomId, "send-message", ack))) return;
-      const message = { id: randomUUID(), roomId: input.roomId, senderId: socket.data.user.userId, content: input.content.trim(), clientMessageId: input.clientMessageId, sentAt: new Date().toISOString() };
+      const message = {
+        id: randomUUID(),
+        roomId: input.roomId,
+        senderId: socket.data.user.userId,
+        content: input.content.trim(),
+        clientMessageId: input.clientMessageId,
+        sentAt: new Date().toISOString(),
+      };
       this.io.to(input.roomId).emit("message", message);
       const deliveredAt = new Date().toISOString();
       for (const recipientId of await this.userIdsInRoom(input.roomId, socket.id)) {
         if (recipientId === socket.data.user.userId) continue;
-        const delivered: MessageDeliveredEvent = { messageId: message.id, roomId: input.roomId, recipientId, deliveredAt };
+        const delivered: MessageDeliveredEvent = {
+          messageId: message.id,
+          roomId: input.roomId,
+          recipientId,
+          deliveredAt,
+        };
         socket.emit("message:delivered", delivered);
       }
       ack({ ok: true, data: message });
@@ -225,7 +266,8 @@ export class RealtimeServer {
 
     socket.on("typing:set", async (input, ack) => {
       if (!this.ready(socket, ack) || !this.validTyping(input, ack)) return;
-      if (!socket.rooms.has(input.roomId)) return ack(errorResult("NOT_IN_ROOM", "Join the room before setting typing state."));
+      if (!socket.rooms.has(input.roomId))
+        return ack(errorResult("NOT_IN_ROOM", "Join the room before setting typing state."));
       if (!(await this.allowed(socket, input.roomId, "typing", ack))) return;
       const typing = { roomId: input.roomId, userId: socket.data.user.userId };
       for (const recipient of await this.io.in(input.roomId).fetchSockets()) {
@@ -238,11 +280,15 @@ export class RealtimeServer {
 
     socket.on("call:start", async (input, ack) => {
       if (!this.ready(socket, ack) || !this.validCallStart(input, ack)) return;
-      if (!socket.rooms.has(input.roomId)) return ack(errorResult("NOT_IN_ROOM", "Join the room before starting a call."));
+      if (!socket.rooms.has(input.roomId))
+        return ack(errorResult("NOT_IN_ROOM", "Join the room before starting a call."));
       if (!(await this.allowed(socket, input.roomId, "call", ack))) return;
-      const recipients = (await this.io.in(input.roomId).fetchSockets()).filter((candidate) => candidate.id !== socket.id && candidate.data.user.userId !== socket.data.user.userId);
+      const recipients = (await this.io.in(input.roomId).fetchSockets()).filter(
+        (candidate) => candidate.id !== socket.id && candidate.data.user.userId !== socket.data.user.userId,
+      );
       const recipientIds = new Set(recipients.map((candidate) => candidate.data.user.userId));
-      if (recipientIds.size !== 1) return ack(errorResult("CALL_UNAVAILABLE", "A one-to-one call requires exactly one other user in the room."));
+      if (recipientIds.size !== 1)
+        return ack(errorResult("CALL_UNAVAILABLE", "A one-to-one call requires exactly one other user in the room."));
       const recipient = recipients[0];
       const callId = randomUUID();
       const call: ActiveCall = {
@@ -254,10 +300,15 @@ export class RealtimeServer {
         recipientId: recipient.data.user.userId,
         mediaType: input.mediaType ?? "audio",
         state: "ringing",
-        timeout: setTimeout(() => this.endCall(callId, "timeout"), this.options.callTimeoutMs ?? 30_000)
+        timeout: setTimeout(() => this.endCall(callId, "timeout"), this.options.callTimeoutMs ?? 30_000),
       };
       this.calls.set(callId, call);
-      recipient.emit("call:incoming", { callId, roomId: call.roomId, callerId: call.callerId, mediaType: call.mediaType });
+      recipient.emit("call:incoming", {
+        callId,
+        roomId: call.roomId,
+        callerId: call.callerId,
+        mediaType: call.mediaType,
+      });
       ack({ ok: true, data: { callId, roomId: call.roomId, recipientId: call.recipientId } });
     });
 
@@ -267,7 +318,12 @@ export class RealtimeServer {
       if (!(await this.allowed(socket, call.roomId, "call", ack))) return;
       clearTimeout(call.timeout);
       call.state = "active";
-      this.io.to(call.callerSocketId).emit("call:accepted", { callId: call.id, roomId: call.roomId, recipientId: call.recipientId, mediaType: call.mediaType });
+      this.io.to(call.callerSocketId).emit("call:accepted", {
+        callId: call.id,
+        roomId: call.roomId,
+        recipientId: call.recipientId,
+        mediaType: call.mediaType,
+      });
       ack({ ok: true, data: { callId: call.id } });
     });
 
@@ -276,16 +332,23 @@ export class RealtimeServer {
       const groupCall = this.groupCalls.get(input.callId);
       if (groupCall) {
         if (groupCall.invitees.has(socket.data.user.userId)) {
-          this.io.to(groupCall.callerSocketId).emit("call:rejected", { callId: groupCall.id, roomId: groupCall.roomId, recipientId: socket.data.user.userId });
+          this.io.to(groupCall.callerSocketId).emit("call:rejected", {
+            callId: groupCall.id,
+            roomId: groupCall.roomId,
+            recipientId: socket.data.user.userId,
+          });
           groupCall.invitees.delete(socket.data.user.userId);
-          if (groupCall.participants.size === 0 && groupCall.invitees.size === 0) this.finishGroupCall(groupCall, "rejected", socket.data.user.userId);
+          if (groupCall.participants.size === 0 && groupCall.invitees.size === 0)
+            this.finishGroupCall(groupCall, "rejected", socket.data.user.userId);
         }
         return ack({ ok: true, data: { callId: groupCall.id } });
       }
       const call = await this.callFor(socket, input, ack, "recipient", "ringing");
       if (!call) return;
       if (!(await this.allowed(socket, call.roomId, "call", ack))) return;
-      this.io.to(call.callerSocketId).emit("call:rejected", { callId: call.id, roomId: call.roomId, recipientId: call.recipientId });
+      this.io
+        .to(call.callerSocketId)
+        .emit("call:rejected", { callId: call.id, roomId: call.roomId, recipientId: call.recipientId });
       this.finishCall(call, "rejected", socket.data.user.userId, false);
       ack({ ok: true, data: { callId: call.id } });
     });
@@ -309,9 +372,15 @@ export class RealtimeServer {
 
     socket.on("call:start-group", async (input, ack) => {
       if (!this.ready(socket, ack) || !this.validCallStart(input, ack)) return;
-      if (!socket.rooms.has(input.roomId)) return ack(errorResult("NOT_IN_ROOM", "Join the room before starting a group call."));
+      if (!socket.rooms.has(input.roomId))
+        return ack(errorResult("NOT_IN_ROOM", "Join the room before starting a group call."));
       if (!(await this.allowed(socket, input.roomId, "call", ack))) return;
-      const inviteeSockets = (await this.io.in(input.roomId).fetchSockets()).filter((candidate) => candidate.id !== socket.id && candidate.data.user?.userId && candidate.data.user.userId !== socket.data.user.userId);
+      const inviteeSockets = (await this.io.in(input.roomId).fetchSockets()).filter(
+        (candidate) =>
+          candidate.id !== socket.id &&
+          candidate.data.user?.userId &&
+          candidate.data.user.userId !== socket.data.user.userId,
+      );
       const inviteeMap = new Map<string, string>();
       const participantIds = [socket.data.user.userId];
       for (const invitee of inviteeSockets) {
@@ -339,15 +408,32 @@ export class RealtimeServer {
         state: "ringing",
         participants: new Map([[socket.data.user.userId, socket.id]]),
         invitees: inviteeMap,
-        timeout: setTimeout(() => this.endGroupCall(callId, "timeout"), this.options.callTimeoutMs ?? 30_000)
+        timeout: setTimeout(() => this.endGroupCall(callId, "timeout"), this.options.callTimeoutMs ?? 30_000),
       };
       this.groupCalls.set(callId, call);
-      const incoming: GroupCallIncomingEvent = { callId, roomId: call.roomId, callerId: call.callerId, mediaType: call.mediaType, participantIds, selfId: "", mediaMode };
+      const incoming: GroupCallIncomingEvent = {
+        callId,
+        roomId: call.roomId,
+        callerId: call.callerId,
+        mediaType: call.mediaType,
+        participantIds,
+        selfId: "",
+        mediaMode,
+      };
       for (const [userId, socketId] of inviteeMap) {
         const inviteeSocket = this.io.sockets.sockets.get(socketId);
         inviteeSocket?.emit("group:call:incoming", { ...incoming, selfId: userId });
       }
-      ack({ ok: true, data: { callId, roomId: call.roomId, participantIds, selfId: socket.data.user.userId, mediaMode } as GroupCallResult });
+      ack({
+        ok: true,
+        data: {
+          callId,
+          roomId: call.roomId,
+          participantIds,
+          selfId: socket.data.user.userId,
+          mediaMode,
+        } as GroupCallResult,
+      });
     });
 
     socket.on("call:join", async (input, ack) => {
@@ -361,20 +447,43 @@ export class RealtimeServer {
         clearTimeout(call.timeout);
       }
       const participantIds = [...call.participants.keys()];
-      const participantJoined: GroupCallParticipantEvent = { callId: call.id, roomId: call.roomId, participantId: socket.data.user.userId, participantIds, selfId: "" };
+      const participantJoined: GroupCallParticipantEvent = {
+        callId: call.id,
+        roomId: call.roomId,
+        participantId: socket.data.user.userId,
+        participantIds,
+        selfId: "",
+      };
       for (const [participantId, socketId] of call.participants) {
         if (participantId === socket.data.user.userId) continue;
-        this.io.sockets.sockets.get(socketId)?.emit("group:call:participant-joined", { ...participantJoined, selfId: participantId });
+        this.io.sockets.sockets
+          .get(socketId)
+          ?.emit("group:call:participant-joined", { ...participantJoined, selfId: participantId });
       }
       if (call.mediaMode === "sfu") {
         for (const [participantId, media] of call.sfuMedia ?? []) {
           if (participantId === socket.data.user.userId) continue;
           for (const [producerId, info] of media.producers) {
-            socket.emit("sfu:producer-added", { callId: call.id, roomId: call.roomId, producerId, peerId: participantId, kind: info.kind, appData: info.appData });
+            socket.emit("sfu:producer-added", {
+              callId: call.id,
+              roomId: call.roomId,
+              producerId,
+              peerId: participantId,
+              kind: info.kind,
+              appData: info.appData,
+            });
           }
         }
       }
-      ack({ ok: true, data: { callId: call.id, participantIds, selfId: socket.data.user.userId, mediaMode: call.mediaMode } as GroupCallJoinResult });
+      ack({
+        ok: true,
+        data: {
+          callId: call.id,
+          participantIds,
+          selfId: socket.data.user.userId,
+          mediaMode: call.mediaMode,
+        } as GroupCallJoinResult,
+      });
     });
 
     socket.on("call:leave", async (input, ack) => {
@@ -385,15 +494,26 @@ export class RealtimeServer {
       ack({ ok: true, data: { callId: call.id } });
     });
 
-    socket.on("group:webrtc:offer", async (input, ack) => this.relayGroupDescription(socket, input, ack, "group:webrtc:offer"));
-    socket.on("group:webrtc:answer", async (input, ack) => this.relayGroupDescription(socket, input, ack, "group:webrtc:answer"));
+    socket.on("group:webrtc:offer", async (input, ack) =>
+      this.relayGroupDescription(socket, input, ack, "group:webrtc:offer"),
+    );
+    socket.on("group:webrtc:answer", async (input, ack) =>
+      this.relayGroupDescription(socket, input, ack, "group:webrtc:answer"),
+    );
     socket.on("group:webrtc:ice-candidate", async (input, ack) => {
       if (!this.ready(socket, ack) || !this.validGroupCandidate(input, ack)) return;
       const call = await this.groupCallFor(socket, input, ack, "participant", "active");
       if (!call || !(await this.allowed(socket, call.roomId, "webrtc", ack))) return;
       const targetSocketId = call.participants.get(input.targetId);
-      if (!targetSocketId) return ack(errorResult("UNAUTHORIZED", "The signaling target is not a participant in this call."));
-      this.io.to(targetSocketId).emit("group:webrtc:ice-candidate", { callId: call.id, roomId: call.roomId, senderId: socket.data.user.userId, targetId: input.targetId, candidate: input.candidate });
+      if (!targetSocketId)
+        return ack(errorResult("UNAUTHORIZED", "The signaling target is not a participant in this call."));
+      this.io.to(targetSocketId).emit("group:webrtc:ice-candidate", {
+        callId: call.id,
+        roomId: call.roomId,
+        senderId: socket.data.user.userId,
+        targetId: input.targetId,
+        candidate: input.candidate,
+      });
       ack({ ok: true, data: { callId: call.id } });
     });
 
@@ -434,9 +554,24 @@ export class RealtimeServer {
       if (!resolved) return;
       const { call, room } = resolved;
       try {
-        const producer = await room.produce({ transportId: input.transportId, kind: input.kind, rtpParameters: input.rtpParameters, appData: input.appData });
-        this.participantSfu(call, socket.data.user.userId).producers.set(producer.id, { kind: producer.kind, appData: producer.appData });
-        const event: SfuProducerAddedEvent = { callId: call.id, roomId: call.roomId, producerId: producer.id, peerId: socket.data.user.userId, kind: producer.kind, appData: producer.appData };
+        const producer = await room.produce({
+          transportId: input.transportId,
+          kind: input.kind,
+          rtpParameters: input.rtpParameters,
+          appData: input.appData,
+        });
+        this.participantSfu(call, socket.data.user.userId).producers.set(producer.id, {
+          kind: producer.kind,
+          appData: producer.appData,
+        });
+        const event: SfuProducerAddedEvent = {
+          callId: call.id,
+          roomId: call.roomId,
+          producerId: producer.id,
+          peerId: socket.data.user.userId,
+          kind: producer.kind,
+          appData: producer.appData,
+        };
         for (const [participantId, socketId] of call.participants) {
           if (participantId === socket.data.user.userId) continue;
           this.io.sockets.sockets.get(socketId)?.emit("sfu:producer-added", event);
@@ -452,8 +587,21 @@ export class RealtimeServer {
       const resolved = await this.sfuCall(socket, input, ack);
       if (!resolved) return;
       try {
-        const consumer = await resolved.room.consume({ transportId: input.transportId, producerId: input.producerId, rtpCapabilities: input.rtpCapabilities });
-        ack({ ok: true, data: { consumerId: consumer.id, producerId: consumer.producerId, kind: consumer.kind, rtpParameters: consumer.rtpParameters, paused: consumer.paused } });
+        const consumer = await resolved.room.consume({
+          transportId: input.transportId,
+          producerId: input.producerId,
+          rtpCapabilities: input.rtpCapabilities,
+        });
+        ack({
+          ok: true,
+          data: {
+            consumerId: consumer.id,
+            producerId: consumer.producerId,
+            kind: consumer.kind,
+            rtpParameters: consumer.rtpParameters,
+            paused: consumer.paused,
+          },
+        });
       } catch (error) {
         ack(errorResult("SFU_ERROR", errorMessage(error)));
       }
@@ -490,7 +638,12 @@ export class RealtimeServer {
       const { call, room } = resolved;
       room.closeProducer(input.producerId);
       call.sfuMedia?.get(socket.data.user.userId)?.producers.delete(input.producerId);
-      const event: SfuProducerRemovedEvent = { callId: call.id, roomId: call.roomId, producerId: input.producerId, peerId: socket.data.user.userId };
+      const event: SfuProducerRemovedEvent = {
+        callId: call.id,
+        roomId: call.roomId,
+        producerId: input.producerId,
+        peerId: socket.data.user.userId,
+      };
       for (const [participantId, socketId] of call.participants) {
         if (participantId === socket.data.user.userId) continue;
         this.io.sockets.sockets.get(socketId)?.emit("sfu:producer-removed", event);
@@ -517,7 +670,12 @@ export class RealtimeServer {
       const call = await this.callFor(socket, input, ack, "participant", "active");
       if (!call || !(await this.allowed(socket, call.roomId, "webrtc", ack))) return;
       const targetSocketId = socket.id === call.callerSocketId ? call.recipientSocketId : call.callerSocketId;
-      this.io.to(targetSocketId).emit("webrtc:ice-candidate", { callId: call.id, roomId: call.roomId, senderId: socket.data.user.userId, candidate: input.candidate });
+      this.io.to(targetSocketId).emit("webrtc:ice-candidate", {
+        callId: call.id,
+        roomId: call.roomId,
+        senderId: socket.data.user.userId,
+        candidate: input.candidate,
+      });
       ack({ ok: true, data: { callId: call.id } });
     });
   }
@@ -535,12 +693,21 @@ export class RealtimeServer {
   }
 
   private validMessage<T>(input: SendMessageInput, ack: (result: Result<T>) => void): boolean {
-    if (!validRoom(input?.roomId)) { ack(invalid("roomId must be valid.")); return false; }
-    if (typeof input.content !== "string" || !input.content.trim() || input.content.length > 10_000) { ack(invalid("content must be a non-empty string up to 10,000 characters.")); return false; }
+    if (!validRoom(input?.roomId)) {
+      ack(invalid("roomId must be valid."));
+      return false;
+    }
+    if (typeof input.content !== "string" || !input.content.trim() || input.content.length > 10_000) {
+      ack(invalid("content must be a non-empty string up to 10,000 characters."));
+      return false;
+    }
     return true;
   }
 
-  private validTyping<T>(input: { roomId: unknown; isTyping: unknown }, ack: (result: Result<T>) => void): input is { roomId: string; isTyping: boolean } {
+  private validTyping<T>(
+    input: { roomId: unknown; isTyping: unknown },
+    ack: (result: Result<T>) => void,
+  ): input is { roomId: string; isTyping: boolean } {
     if (!validRoom(input?.roomId) || typeof input.isTyping !== "boolean") {
       ack(invalid("roomId must be valid and isTyping must be a boolean."));
       return false;
@@ -557,26 +724,66 @@ export class RealtimeServer {
     return true;
   }
 
-  private validCallId<T, I extends { callId?: unknown }>(input: I, ack: (result: Result<T>) => void): input is I & CallResponseInput {
+  private validCallId<T, I extends { callId?: unknown }>(
+    input: I,
+    ack: (result: Result<T>) => void,
+  ): input is I & CallResponseInput {
     if (typeof input?.callId === "string" && input.callId.length > 0 && input.callId.length <= 200) return true;
     ack(invalid("callId must be a non-empty string no longer than 200 characters."));
     return false;
   }
 
-  private validDescription<T>(input: { callId?: unknown; description?: { type?: unknown; sdp?: unknown } }, ack: (result: Result<T>) => void): boolean {
+  private validDescription<T>(
+    input: { callId?: unknown; description?: { type?: unknown; sdp?: unknown } },
+    ack: (result: Result<T>) => void,
+  ): boolean {
     if (!this.validCallId(input, ack)) return false;
-    if ((input.description?.type === "offer" || input.description?.type === "answer") && typeof input.description.sdp === "string" && input.description.sdp.length > 0 && input.description.sdp.length <= 200_000) return true;
+    if (
+      (input.description?.type === "offer" || input.description?.type === "answer") &&
+      typeof input.description.sdp === "string" &&
+      input.description.sdp.length > 0 &&
+      input.description.sdp.length <= 200_000
+    )
+      return true;
     ack(invalid("description must contain an offer or answer with a non-empty SDP string."));
     return false;
   }
 
-  private validCandidate<T>(input: { callId?: unknown; candidate?: { candidate?: unknown; sdpMid?: unknown; sdpMLineIndex?: unknown; usernameFragment?: unknown } }, ack: (result: Result<T>) => void): boolean {
+  private validCandidate<T>(
+    input: {
+      callId?: unknown;
+      candidate?: { candidate?: unknown; sdpMid?: unknown; sdpMLineIndex?: unknown; usernameFragment?: unknown };
+    },
+    ack: (result: Result<T>) => void,
+  ): boolean {
     if (!this.validCallId(input, ack)) return false;
     const candidate = input.candidate;
-    if (typeof candidate?.candidate !== "string" || candidate.candidate.length > 10_000) { ack(invalid("candidate must contain a valid candidate string.")); return false; }
-    if (candidate.sdpMid !== undefined && candidate.sdpMid !== null && typeof candidate.sdpMid !== "string") { ack(invalid("candidate.sdpMid must be a string or null.")); return false; }
-    if (candidate.sdpMLineIndex !== undefined && candidate.sdpMLineIndex !== null && (typeof candidate.sdpMLineIndex !== "number" || !Number.isInteger(candidate.sdpMLineIndex) || candidate.sdpMLineIndex < 0)) { ack(invalid("candidate.sdpMLineIndex must be a non-negative integer or null.")); return false; }
-    if (candidate.usernameFragment !== undefined && candidate.usernameFragment !== null && typeof candidate.usernameFragment !== "string") { ack(invalid("candidate.usernameFragment must be a string or null.")); return false; }
+    if (typeof candidate?.candidate !== "string" || candidate.candidate.length > 10_000) {
+      ack(invalid("candidate must contain a valid candidate string."));
+      return false;
+    }
+    if (candidate.sdpMid !== undefined && candidate.sdpMid !== null && typeof candidate.sdpMid !== "string") {
+      ack(invalid("candidate.sdpMid must be a string or null."));
+      return false;
+    }
+    if (
+      candidate.sdpMLineIndex !== undefined &&
+      candidate.sdpMLineIndex !== null &&
+      (typeof candidate.sdpMLineIndex !== "number" ||
+        !Number.isInteger(candidate.sdpMLineIndex) ||
+        candidate.sdpMLineIndex < 0)
+    ) {
+      ack(invalid("candidate.sdpMLineIndex must be a non-negative integer or null."));
+      return false;
+    }
+    if (
+      candidate.usernameFragment !== undefined &&
+      candidate.usernameFragment !== null &&
+      typeof candidate.usernameFragment !== "string"
+    ) {
+      ack(invalid("candidate.usernameFragment must be a string or null."));
+      return false;
+    }
     return true;
   }
 
@@ -588,57 +795,112 @@ export class RealtimeServer {
     return true;
   }
 
-  private validGroupCandidate<T>(input: { callId?: unknown; targetId?: unknown; candidate?: { candidate?: unknown; sdpMid?: unknown; sdpMLineIndex?: unknown; usernameFragment?: unknown } }, ack: (result: Result<T>) => void): boolean {
+  private validGroupCandidate<T>(
+    input: {
+      callId?: unknown;
+      targetId?: unknown;
+      candidate?: { candidate?: unknown; sdpMid?: unknown; sdpMLineIndex?: unknown; usernameFragment?: unknown };
+    },
+    ack: (result: Result<T>) => void,
+  ): boolean {
     if (!this.validCallId(input, ack) || !this.validGroupTarget(input, ack)) return false;
     return this.validCandidate(input, ack);
   }
 
-  private validSfuDirection<T>(input: { direction?: unknown }, ack: (result: Result<T>) => void): input is { direction: SfuTransportDirection } {
+  private validSfuDirection<T>(
+    input: { direction?: unknown },
+    ack: (result: Result<T>) => void,
+  ): input is { direction: SfuTransportDirection } {
     if (input.direction === "send" || input.direction === "recv") return true;
     ack(invalid("direction must be send or recv."));
     return false;
   }
 
-  private validSfuTransport<T, I extends { callId?: unknown; transportId?: unknown }>(input: I, ack: (result: Result<T>) => void): input is I & { callId: string; transportId: string } {
+  private validSfuTransport<T, I extends { callId?: unknown; transportId?: unknown }>(
+    input: I,
+    ack: (result: Result<T>) => void,
+  ): input is I & { callId: string; transportId: string } {
     if (!this.validCallId(input, ack)) return false;
-    if (typeof input.transportId === "string" && input.transportId.length > 0 && input.transportId.length <= 200) return true;
+    if (typeof input.transportId === "string" && input.transportId.length > 0 && input.transportId.length <= 200)
+      return true;
     ack(invalid("transportId must be a non-empty string no longer than 200 characters."));
     return false;
   }
 
-  private validSfuProducer<T>(input: { callId?: unknown; producerId?: unknown }, ack: (result: Result<T>) => void): input is { callId: string; producerId: string } {
+  private validSfuProducer<T>(
+    input: { callId?: unknown; producerId?: unknown },
+    ack: (result: Result<T>) => void,
+  ): input is { callId: string; producerId: string } {
     if (!this.validCallId(input, ack)) return false;
-    if (typeof input.producerId === "string" && input.producerId.length > 0 && input.producerId.length <= 200) return true;
+    if (typeof input.producerId === "string" && input.producerId.length > 0 && input.producerId.length <= 200)
+      return true;
     ack(invalid("producerId must be a non-empty string no longer than 200 characters."));
     return false;
   }
 
-  private validSfuConsumer<T>(input: { callId?: unknown; consumerId?: unknown }, ack: (result: Result<T>) => void): input is { callId: string; consumerId: string } {
+  private validSfuConsumer<T>(
+    input: { callId?: unknown; consumerId?: unknown },
+    ack: (result: Result<T>) => void,
+  ): input is { callId: string; consumerId: string } {
     if (!this.validCallId(input, ack)) return false;
-    if (typeof input.consumerId === "string" && input.consumerId.length > 0 && input.consumerId.length <= 200) return true;
+    if (typeof input.consumerId === "string" && input.consumerId.length > 0 && input.consumerId.length <= 200)
+      return true;
     ack(invalid("consumerId must be a non-empty string no longer than 200 characters."));
     return false;
   }
 
-  private validSfuConnect<T>(input: { callId?: unknown; transportId?: unknown; dtlsParameters?: unknown }, ack: (result: Result<T>) => void): input is { callId: string; transportId: string; dtlsParameters: SfuDtlsParameters } {
+  private validSfuConnect<T>(
+    input: { callId?: unknown; transportId?: unknown; dtlsParameters?: unknown },
+    ack: (result: Result<T>) => void,
+  ): input is { callId: string; transportId: string; dtlsParameters: SfuDtlsParameters } {
     if (!this.validSfuTransport(input, ack)) return false;
     const fingerprints = (input.dtlsParameters as { fingerprints?: unknown } | undefined)?.fingerprints;
-    if (typeof input.dtlsParameters === "object" && input.dtlsParameters !== null && Array.isArray(fingerprints) && fingerprints.length > 0) return true;
+    if (
+      typeof input.dtlsParameters === "object" &&
+      input.dtlsParameters !== null &&
+      Array.isArray(fingerprints) &&
+      fingerprints.length > 0
+    )
+      return true;
     ack(invalid("dtlsParameters must contain a non-empty fingerprints array."));
     return false;
   }
 
-  private validSfuProduce<T>(input: { callId?: unknown; transportId?: unknown; kind?: unknown; rtpParameters?: unknown }, ack: (result: Result<T>) => void): input is { callId: string; transportId: string; kind: "audio" | "video"; rtpParameters: SfuRtpParameters; appData?: Record<string, unknown> } {
+  private validSfuProduce<T>(
+    input: { callId?: unknown; transportId?: unknown; kind?: unknown; rtpParameters?: unknown },
+    ack: (result: Result<T>) => void,
+  ): input is {
+    callId: string;
+    transportId: string;
+    kind: "audio" | "video";
+    rtpParameters: SfuRtpParameters;
+    appData?: Record<string, unknown>;
+  } {
     if (!this.validSfuTransport(input, ack)) return false;
-    if (input.kind !== "audio" && input.kind !== "video") { ack(invalid("kind must be audio or video.")); return false; }
-    if (typeof input.rtpParameters !== "object" || input.rtpParameters === null) { ack(invalid("rtpParameters must be an object.")); return false; }
+    if (input.kind !== "audio" && input.kind !== "video") {
+      ack(invalid("kind must be audio or video."));
+      return false;
+    }
+    if (typeof input.rtpParameters !== "object" || input.rtpParameters === null) {
+      ack(invalid("rtpParameters must be an object."));
+      return false;
+    }
     return true;
   }
 
-  private validSfuConsume<T>(input: { callId?: unknown; transportId?: unknown; producerId?: unknown; rtpCapabilities?: unknown }, ack: (result: Result<T>) => void): input is { callId: string; transportId: string; producerId: string; rtpCapabilities: SfuRtpCapabilities } {
+  private validSfuConsume<T>(
+    input: { callId?: unknown; transportId?: unknown; producerId?: unknown; rtpCapabilities?: unknown },
+    ack: (result: Result<T>) => void,
+  ): input is { callId: string; transportId: string; producerId: string; rtpCapabilities: SfuRtpCapabilities } {
     if (!this.validSfuTransport(input, ack)) return false;
-    if (typeof input.producerId !== "string" || !input.producerId || input.producerId.length > 200) { ack(invalid("producerId must be a non-empty string no longer than 200 characters.")); return false; }
-    if (typeof input.rtpCapabilities !== "object" || input.rtpCapabilities === null) { ack(invalid("rtpCapabilities must be an object.")); return false; }
+    if (typeof input.producerId !== "string" || !input.producerId || input.producerId.length > 200) {
+      ack(invalid("producerId must be a non-empty string no longer than 200 characters."));
+      return false;
+    }
+    if (typeof input.rtpCapabilities !== "object" || input.rtpCapabilities === null) {
+      ack(invalid("rtpCapabilities must be an object."));
+      return false;
+    }
     return true;
   }
 
@@ -650,7 +912,8 @@ export class RealtimeServer {
       if (!stillPresent) socket.to(roomId).emit("user:offline", { roomId, userId });
     }
     for (const call of [...this.calls.values()]) {
-      if (call.callerSocketId === socket.id || call.recipientSocketId === socket.id) this.finishCall(call, "disconnected", socket.data.user.userId, false);
+      if (call.callerSocketId === socket.id || call.recipientSocketId === socket.id)
+        this.finishCall(call, "disconnected", socket.data.user.userId, false);
     }
     for (const call of [...this.groupCalls.values()]) {
       if (call.participants.has(socket.data.user.userId) || call.invitees.has(socket.data.user.userId)) {
@@ -661,27 +924,50 @@ export class RealtimeServer {
 
   private async userIdsInRoom(roomId: string, exceptSocketId?: string): Promise<string[]> {
     const sockets = await this.io.in(roomId).fetchSockets();
-    return [...new Set(sockets.filter((socket) => socket.id !== exceptSocketId).map((socket) => socket.data.user?.userId).filter((userId): userId is string => Boolean(userId)))];
+    return [
+      ...new Set(
+        sockets
+          .filter((socket) => socket.id !== exceptSocketId)
+          .map((socket) => socket.data.user?.userId)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    ];
   }
 
   private async userIsPresent(roomId: string, userId: string, exceptSocketId?: string): Promise<boolean> {
     return (await this.userIdsInRoom(roomId, exceptSocketId)).includes(userId);
   }
 
-  private async allowed<T>(socket: TypedSocket, roomId: string, action: RoomAction, ack: (result: Result<T>) => void): Promise<boolean> {
-    if (!this.options.authorizeRoom || await this.options.authorizeRoom({ user: socket.data.user, roomId, action })) return true;
+  private async allowed<T>(
+    socket: TypedSocket,
+    roomId: string,
+    action: RoomAction,
+    ack: (result: Result<T>) => void,
+  ): Promise<boolean> {
+    if (!this.options.authorizeRoom || (await this.options.authorizeRoom({ user: socket.data.user, roomId, action })))
+      return true;
     ack(errorResult("UNAUTHORIZED", "You are not authorized for this room action."));
     return false;
   }
 
   /** Resolves an SFU action to the active group call and its media room, with authorization. */
-  private async sfuCall(socket: TypedSocket, input: { callId?: unknown }, ack: (result: Result<never>) => void): Promise<{ call: ActiveGroupCall; room: SfuRoomHandle } | undefined> {
+  private async sfuCall(
+    socket: TypedSocket,
+    input: { callId?: unknown },
+    ack: (result: Result<never>) => void,
+  ): Promise<{ call: ActiveGroupCall; room: SfuRoomHandle } | undefined> {
     const call = await this.groupCallFor(socket, input, ack, "participant");
     if (!call) return undefined;
-    if (call.mediaMode !== "sfu") { ack(errorResult("SFU_UNAVAILABLE", "This call does not use the SFU media path.")); return undefined; }
+    if (call.mediaMode !== "sfu") {
+      ack(errorResult("SFU_UNAVAILABLE", "This call does not use the SFU media path."));
+      return undefined;
+    }
     if (!(await this.allowed(socket, call.roomId, "sfu", ack))) return undefined;
     const room = this.options.sfu?.room(call.roomId);
-    if (!room) { ack(errorResult("SFU_UNAVAILABLE", "The SFU room for this call is not available.")); return undefined; }
+    if (!room) {
+      ack(errorResult("SFU_UNAVAILABLE", "The SFU room for this call is not available."));
+      return undefined;
+    }
     return { call, room };
   }
 
@@ -733,58 +1019,118 @@ export class RealtimeServer {
     for (const producerId of media.producers.keys()) {
       room.closeProducer(producerId);
       const event: SfuProducerRemovedEvent = { callId: call.id, roomId: call.roomId, producerId, peerId: userId };
-      for (const [participantId, socketId] of call.participants) {
+      for (const [, socketId] of call.participants) {
         this.io.sockets.sockets.get(socketId)?.emit("sfu:producer-removed", event);
       }
     }
     for (const transportId of media.transports) await room.closeTransport(transportId);
   }
 
-  private async callFor<T>(socket: TypedSocket, input: { callId?: unknown }, ack: (result: Result<T>) => void, role: "caller" | "recipient" | "participant", state?: ActiveCall["state"]): Promise<ActiveCall | undefined> {
+  private async callFor<T>(
+    socket: TypedSocket,
+    input: { callId?: unknown },
+    ack: (result: Result<T>) => void,
+    role: "caller" | "recipient" | "participant",
+    state?: ActiveCall["state"],
+  ): Promise<ActiveCall | undefined> {
     if (!this.ready(socket, ack) || !this.validCallId(input, ack)) return undefined;
     const call = this.calls.get(input.callId);
-    if (!call) { ack(errorResult("CALL_NOT_FOUND", "The call no longer exists.")); return undefined; }
+    if (!call) {
+      ack(errorResult("CALL_NOT_FOUND", "The call no longer exists."));
+      return undefined;
+    }
     const isCaller = call.callerSocketId === socket.id;
     const isRecipient = call.recipientSocketId === socket.id;
-    if ((role === "caller" && !isCaller) || (role === "recipient" && !isRecipient) || (role === "participant" && !isCaller && !isRecipient)) {
+    if (
+      (role === "caller" && !isCaller) ||
+      (role === "recipient" && !isRecipient) ||
+      (role === "participant" && !isCaller && !isRecipient)
+    ) {
       ack(errorResult("UNAUTHORIZED", "You are not a participant in this call."));
       return undefined;
     }
-    if (state && call.state !== state) { ack(errorResult("CALL_INVALID_STATE", `This action is not available while the call is ${call.state}.`)); return undefined; }
+    if (state && call.state !== state) {
+      ack(errorResult("CALL_INVALID_STATE", `This action is not available while the call is ${call.state}.`));
+      return undefined;
+    }
     return call;
   }
 
-  private async groupCallFor<T>(socket: TypedSocket, input: { callId?: unknown }, ack: (result: Result<T>) => void, role: "caller" | "participant" | "invitee", state?: ActiveGroupCall["state"]): Promise<ActiveGroupCall | undefined> {
+  private async groupCallFor<T>(
+    socket: TypedSocket,
+    input: { callId?: unknown },
+    ack: (result: Result<T>) => void,
+    role: "caller" | "participant" | "invitee",
+    state?: ActiveGroupCall["state"],
+  ): Promise<ActiveGroupCall | undefined> {
     if (!this.ready(socket, ack) || !this.validCallId(input, ack)) return undefined;
     const call = this.groupCalls.get(input.callId);
-    if (!call) { ack(errorResult("CALL_NOT_FOUND", "The call no longer exists.")); return undefined; }
+    if (!call) {
+      ack(errorResult("CALL_NOT_FOUND", "The call no longer exists."));
+      return undefined;
+    }
     const isCaller = call.callerSocketId === socket.id;
     const isParticipant = call.participants.has(socket.data.user.userId);
     const isInvitee = call.invitees.has(socket.data.user.userId);
-    if ((role === "caller" && !isCaller) || (role === "participant" && !isParticipant) || (role === "invitee" && !isInvitee)) {
+    if (
+      (role === "caller" && !isCaller) ||
+      (role === "participant" && !isParticipant) ||
+      (role === "invitee" && !isInvitee)
+    ) {
       ack(errorResult("UNAUTHORIZED", "You are not authorized for this action on the call."));
       return undefined;
     }
-    if (state && call.state !== state) { ack(errorResult("CALL_INVALID_STATE", `This action is not available while the call is ${call.state}.`)); return undefined; }
+    if (state && call.state !== state) {
+      ack(errorResult("CALL_INVALID_STATE", `This action is not available while the call is ${call.state}.`));
+      return undefined;
+    }
     return call;
   }
 
-  private async relayDescription<T>(socket: TypedSocket, input: { callId?: unknown; description?: { type?: unknown; sdp?: unknown } }, ack: (result: Result<T>) => void, event: "webrtc:offer" | "webrtc:answer"): Promise<void> {
+  private async relayDescription<T>(
+    socket: TypedSocket,
+    input: { callId?: unknown; description?: { type?: unknown; sdp?: unknown } },
+    ack: (result: Result<T>) => void,
+    event: "webrtc:offer" | "webrtc:answer",
+  ): Promise<void> {
     if (!this.ready(socket, ack) || !this.validDescription(input, ack)) return;
     const call = await this.callFor(socket, input, ack, "participant", "active");
     if (!call || !(await this.allowed(socket, call.roomId, "webrtc", ack))) return;
     const targetSocketId = socket.id === call.callerSocketId ? call.recipientSocketId : call.callerSocketId;
-    this.io.to(targetSocketId).emit(event, { callId: call.id, roomId: call.roomId, senderId: socket.data.user.userId, description: input.description as { type: "offer" | "answer"; sdp: string } });
+    this.io.to(targetSocketId).emit(event, {
+      callId: call.id,
+      roomId: call.roomId,
+      senderId: socket.data.user.userId,
+      description: input.description as { type: "offer" | "answer"; sdp: string },
+    });
     ack({ ok: true, data: { callId: call.id } } as Result<T>);
   }
 
-  private async relayGroupDescription<T>(socket: TypedSocket, input: { callId?: unknown; targetId?: unknown; description?: { type?: unknown; sdp?: unknown } }, ack: (result: Result<T>) => void, event: "group:webrtc:offer" | "group:webrtc:answer"): Promise<void> {
-    if (!this.ready(socket, ack) || !this.validCallId(input, ack) || !this.validGroupTarget(input, ack) || !this.validDescription(input, ack)) return;
+  private async relayGroupDescription<T>(
+    socket: TypedSocket,
+    input: { callId?: unknown; targetId?: unknown; description?: { type?: unknown; sdp?: unknown } },
+    ack: (result: Result<T>) => void,
+    event: "group:webrtc:offer" | "group:webrtc:answer",
+  ): Promise<void> {
+    if (
+      !this.ready(socket, ack) ||
+      !this.validCallId(input, ack) ||
+      !this.validGroupTarget(input, ack) ||
+      !this.validDescription(input, ack)
+    )
+      return;
     const call = await this.groupCallFor(socket, input, ack, "participant", "active");
     if (!call || !(await this.allowed(socket, call.roomId, "webrtc", ack))) return;
     const targetSocketId = call.participants.get(input.targetId as string);
-    if (!targetSocketId) return ack(errorResult("UNAUTHORIZED", "The signaling target is not a participant in this call."));
-    this.io.to(targetSocketId).emit(event, { callId: call.id, roomId: call.roomId, senderId: socket.data.user.userId, targetId: input.targetId as string, description: input.description as { type: "offer" | "answer"; sdp: string } });
+    if (!targetSocketId)
+      return ack(errorResult("UNAUTHORIZED", "The signaling target is not a participant in this call."));
+    this.io.to(targetSocketId).emit(event, {
+      callId: call.id,
+      roomId: call.roomId,
+      senderId: socket.data.user.userId,
+      targetId: input.targetId as string,
+      description: input.description as { type: "offer" | "answer"; sdp: string },
+    });
     ack({ ok: true, data: { callId: call.id } } as Result<T>);
   }
 
@@ -795,7 +1141,13 @@ export class RealtimeServer {
     if (call.mediaMode === "sfu" && wasParticipant) void this.closeParticipantSfuMedia(call, userId);
     const participantIds = [...call.participants.keys()];
     for (const [participantId, socketId] of call.participants) {
-      this.io.sockets.sockets.get(socketId)?.emit("group:call:participant-left", { callId: call.id, roomId: call.roomId, participantId: userId, participantIds, selfId: participantId });
+      this.io.sockets.sockets.get(socketId)?.emit("group:call:participant-left", {
+        callId: call.id,
+        roomId: call.roomId,
+        participantId: userId,
+        participantIds,
+        selfId: participantId,
+      });
     }
     if (call.participants.size === 0) this.finishGroupCall(call, reason, userId);
   }

@@ -18,7 +18,7 @@ import { Device } from "mediasoup-client";
 import { createRealtimeClient } from "@realtimesdk/client";
 
 const realtime = createRealtimeClient("http://localhost:3001", {
-  auth: { token: "application-token" }
+  auth: { token: "application-token" },
 });
 
 realtime.on("connected", async () => {
@@ -37,12 +37,14 @@ Application-provided STUN/TURN configuration. Media remains peer-to-peer.
 const realtime = createRealtimeClient("http://localhost:3001", {
   iceServers: [
     { urls: "stun:stun.example.com:3478" },
-    { urls: "turn:turn.example.com:3478", username: "user", credential: "secret" }
-  ]
+    { urls: "turn:turn.example.com:3478", username: "user", credential: "secret" },
+  ],
 });
 
 realtime.on("call:incoming", (call) => realtime.answerAudioCall(call.id));
-realtime.on("call:stream", (call, stream) => { audio.srcObject = stream; });
+realtime.on("call:stream", (call, stream) => {
+  audio.srcObject = stream;
+});
 
 const call = await realtime.startVideoCall("private:alice:bob");
 ```
@@ -61,10 +63,12 @@ import { createRealtimeClient } from "@realtimesdk/client";
 
 const realtime = createRealtimeClient("http://localhost:3001", {
   // Defaults to a real mediasoup-client Device; override for testing or custom transports.
-  sfuDeviceFactory: () => new Device()
+  sfuDeviceFactory: () => new Device(),
 });
 
-realtime.on("call:stream", (call, stream, peerId) => { remoteVideo.srcObject = stream; });
+realtime.on("call:stream", (call, stream, peerId) => {
+  remoteVideo.srcObject = stream;
+});
 
 const call = await realtime.startGroupCall("big-lobby");
 // No extra wiring needed: SFU setup, publishing, and consuming are automatic.

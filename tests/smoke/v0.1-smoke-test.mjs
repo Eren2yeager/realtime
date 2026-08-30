@@ -13,7 +13,7 @@ const server = createRealtimeServer({
 
   authorizeRoom() {
     return true;
-  }
+  },
 });
 
 const waitFor = (client, event) =>
@@ -43,10 +43,7 @@ try {
   bob.connect();
   await Promise.all([aliceConnected, bobConnected]);
 
-  await Promise.all([
-    alice.joinRoom("test-room"),
-    bob.joinRoom("test-room")
-  ]);
+  await Promise.all([alice.joinRoom("test-room"), bob.joinRoom("test-room")]);
 
   const bobReceivedMessage = waitFor(bob, "message");
   await alice.sendMessage("test-room", "Hello Bob!");

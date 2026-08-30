@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.7.0",
   "type": "module",
-  "trustedDependencies": ["mediasoup"],
+  "trustedDependencies": [
+    "mediasoup"
+  ],
   "scripts": {
     "smoke": "node public-registry-smoke-test.mjs"
   },

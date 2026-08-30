@@ -62,7 +62,7 @@ const realtime = createRealtimeServer({
   authorizeRoom: ({ user, roomId, action }) => {
     // Look up membership/application policy here.
     return roomId.startsWith(`private:${user.userId}:`) || roomId === "lobby";
-  }
+  },
 });
 
 await realtime.start();
@@ -85,7 +85,7 @@ app.get("/health", (_request, response) => response.json({ ok: true }));
 const server = createExpressRealtime(app, {
   port: 3001,
   authenticate: (request) => ({ userId: authenticateRequest(request) }),
-  authorizeRoom: ({ user, roomId }) => canAccessRoom(user.userId, roomId)
+  authorizeRoom: ({ user, roomId }) => canAccessRoom(user.userId, roomId),
 });
 await server.start();
 ```
@@ -96,7 +96,7 @@ await server.start();
 import { createRealtimeClient } from "@realtimesdk/client";
 
 const realtime = createRealtimeClient("http://localhost:3001", {
-  auth: { token: "application-token" }
+  auth: { token: "application-token" },
 });
 
 realtime.on("connected", async () => {
@@ -120,8 +120,8 @@ never receives the audio stream.
 const realtime = createRealtimeClient("http://localhost:3001", {
   iceServers: [
     { urls: "stun:stun.example.com:3478" },
-    { urls: "turn:turn.example.com:3478", username: "temporary-user", credential: "temporary-secret" }
-  ]
+    { urls: "turn:turn.example.com:3478", username: "temporary-user", credential: "temporary-secret" },
+  ],
 });
 
 realtime.on("call:incoming", (call) => {
@@ -178,7 +178,6 @@ and `joinCallRaw` start or join a group call without acquiring media, and
 `sendGroupOffer`, `sendGroupAnswer`, and `sendGroupIceCandidate` relay
 point-to-point signaling between named participants.
 
-
 ## React
 
 ```tsx
@@ -190,7 +189,11 @@ function Chat() {
 }
 
 export function App() {
-  return <RealtimeProvider url="http://localhost:3001"><Chat /></RealtimeProvider>;
+  return (
+    <RealtimeProvider url="http://localhost:3001">
+      <Chat />
+    </RealtimeProvider>
+  );
 }
 ```
 

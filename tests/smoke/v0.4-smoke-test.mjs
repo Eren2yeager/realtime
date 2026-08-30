@@ -8,18 +8,22 @@ const server = createRealtimeServer({
     const url = new URL(request.url, "http://localhost");
     return { userId: url.searchParams.get("userId") ?? "anonymous" };
   },
-  authorizeRoom: () => true
+  authorizeRoom: () => true,
 });
 
-const waitFor = (client, event, matches = () => true) => new Promise((resolve, reject) => {
-  const timeout = setTimeout(() => { unsubscribe(); reject(new Error(`Timed out waiting for ${event}`)); }, 5_000);
-  const unsubscribe = client.on(event, (payload) => {
-    if (!matches(payload)) return;
-    clearTimeout(timeout);
-    unsubscribe();
-    resolve(payload);
+const waitFor = (client, event, matches = () => true) =>
+  new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      reject(new Error(`Timed out waiting for ${event}`));
+    }, 5_000);
+    const unsubscribe = client.on(event, (payload) => {
+      if (!matches(payload)) return;
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve(payload);
+    });
   });
-});
 
 let exitCode = 0;
 try {

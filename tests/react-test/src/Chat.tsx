@@ -8,32 +8,68 @@ type CallSignal = { type: "invite" | "ready"; from: string; to: string; roomId: 
 const CALL_SIGNAL_PREFIX = "__realtime_v03_call_test__:";
 const GROUP_ROOM = "lobby";
 const SFU_ROOM = "sfu-lobby";
-const directRoomId = (firstUserId: string, secondUserId: string) => `dm:${[firstUserId, secondUserId].sort().join(":")}`;
+const directRoomId = (firstUserId: string, secondUserId: string) =>
+  `dm:${[firstUserId, secondUserId].sort().join(":")}`;
 const callSignal = (signal: CallSignal) => `${CALL_SIGNAL_PREFIX}${JSON.stringify(signal)}`;
 const parseCallSignal = (content: string): CallSignal | null => {
   if (!content.startsWith(CALL_SIGNAL_PREFIX)) return null;
   try {
     const value = JSON.parse(content.slice(CALL_SIGNAL_PREFIX.length)) as Partial<CallSignal>;
-    return (value.type === "invite" || value.type === "ready") && typeof value.from === "string" && typeof value.to === "string" && typeof value.roomId === "string" && (value.mediaType === undefined || value.mediaType === "audio" || value.mediaType === "video") ? value as CallSignal : null;
-  } catch { return null; }
+    return (value.type === "invite" || value.type === "ready") &&
+      typeof value.from === "string" &&
+      typeof value.to === "string" &&
+      typeof value.roomId === "string" &&
+      (value.mediaType === undefined || value.mediaType === "audio" || value.mediaType === "video")
+      ? (value as CallSignal)
+      : null;
+  } catch {
+    return null;
+  }
 };
 
 function CallAudio({ stream }: { stream?: MediaStream }) {
   const audio = useRef<HTMLAudioElement>(null);
-  useEffect(() => { if (audio.current) audio.current.srcObject = stream ?? null; }, [stream]);
+  useEffect(() => {
+    if (audio.current) audio.current.srcObject = stream ?? null;
+  }, [stream]);
   return <audio ref={audio} autoPlay controls aria-label="Remote caller audio" />;
 }
 
 function CallVideo({ stream, muted = false }: { stream?: MediaStream; muted?: boolean }) {
   const video = useRef<HTMLVideoElement>(null);
-  useEffect(() => { if (video.current) video.current.srcObject = stream ?? null; }, [stream]);
-  return <video ref={video} autoPlay playsInline muted={muted} controls aria-label={muted ? "Local caller video" : "Remote caller video"} />;
+  useEffect(() => {
+    if (video.current) video.current.srcObject = stream ?? null;
+  }, [stream]);
+  return (
+    <video
+      ref={video}
+      autoPlay
+      playsInline
+      muted={muted}
+      controls
+      aria-label={muted ? "Local caller video" : "Remote caller video"}
+    />
+  );
 }
 
 export function Chat({ userId, initialCallWith }: { userId: string; initialCallWith?: string }) {
   const realtime = useRealtime();
   const { messages, userIds, typingUserIds, error: chatError, sendMessage, setTyping } = useChat("lobby");
-  const { calls, error: callError, startAudioCall, startVideoCall, startGroupCall, answerAudioCall, answerVideoCall, joinCall, leaveCall, startScreenShare, stopScreenShare, rejectCall, hangupCall } = useCall();
+  const {
+    calls,
+    error: callError,
+    startAudioCall,
+    startVideoCall,
+    startGroupCall,
+    answerAudioCall,
+    answerVideoCall,
+    joinCall,
+    leaveCall,
+    startScreenShare,
+    stopScreenShare,
+    rejectCall,
+    hangupCall,
+  } = useCall();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [targetUserId, setTargetUserId] = useState(initialCallWith ?? "");
@@ -49,17 +85,26 @@ export function Chat({ userId, initialCallWith }: { userId: string; initialCallW
     return target && target !== userId ? directRoomId(userId, target) : null;
   }, [targetUserId, userId]);
 
-  useEffect(() => () => {
-    if (typingTimeout.current) window.clearTimeout(typingTimeout.current);
-    if (callTimeout.current) window.clearTimeout(callTimeout.current);
-  }, []);
-  useEffect(() => realtime.on("message:delivered", (event) => {
-    setDeliveries((current) => ({ ...current, [event.messageId]: [...(current[event.messageId] ?? []), event] }));
-  }), [realtime]);
+  useEffect(
+    () => () => {
+      if (typingTimeout.current) window.clearTimeout(typingTimeout.current);
+      if (callTimeout.current) window.clearTimeout(callTimeout.current);
+    },
+    [],
+  );
+  useEffect(
+    () =>
+      realtime.on("message:delivered", (event) => {
+        setDeliveries((current) => ({ ...current, [event.messageId]: [...(current[event.messageId] ?? []), event] }));
+      }),
+    [realtime],
+  );
   useEffect(() => {
     if (!sfuRoom) return;
     void realtime.joinRoom(SFU_ROOM).catch(() => undefined);
-    return () => { void realtime.leaveRoom(SFU_ROOM); };
+    return () => {
+      void realtime.leaveRoom(SFU_ROOM);
+    };
   }, [realtime, sfuRoom]);
   useEffect(() => {
     for (const message of messages) {
@@ -70,19 +115,34 @@ export function Chat({ userId, initialCallWith }: { userId: string; initialCallW
         void (async () => {
           try {
             await realtime.joinRoom(signal.roomId);
-            await sendMessage(callSignal({ type: "ready", from: userId, to: signal.from, roomId: signal.roomId, mediaType: signal.mediaType }));
+            await sendMessage(
+              callSignal({
+                type: "ready",
+                from: userId,
+                to: signal.from,
+                roomId: signal.roomId,
+                mediaType: signal.mediaType,
+              }),
+            );
             setCallStatus(`Ready to receive ${signal.from}'s call.`);
           } catch (reason) {
             setCallStatus(reason instanceof Error ? reason.message : "Unable to prepare the incoming call.");
           }
         })();
       }
-      if (signal.type === "ready" && signal.to === userId && pendingCall.current?.targetUserId === signal.from && pendingCall.current.roomId === signal.roomId) {
+      if (
+        signal.type === "ready" &&
+        signal.to === userId &&
+        pendingCall.current?.targetUserId === signal.from &&
+        pendingCall.current.roomId === signal.roomId
+      ) {
         pendingCall.current = null;
         if (callTimeout.current) window.clearTimeout(callTimeout.current);
         setCallStatus(`Calling ${signal.from}...`);
         const start = signal.mediaType === "video" ? startVideoCall : startAudioCall;
-        void start(signal.roomId).then(() => setCallStatus(`Ringing ${signal.from}...`)).catch(() => setCallStatus(null));
+        void start(signal.roomId)
+          .then(() => setCallStatus(`Ringing ${signal.from}...`))
+          .catch(() => setCallStatus(null));
       }
     }
   }, [messages, realtime, sendMessage, startAudioCall, startVideoCall, userId]);
@@ -90,7 +150,10 @@ export function Chat({ userId, initialCallWith }: { userId: string; initialCallW
   const updateText = (next: string) => {
     setText(next);
     if (typingTimeout.current) window.clearTimeout(typingTimeout.current);
-    if (!next.trim()) { void setTyping(false); return; }
+    if (!next.trim()) {
+      void setTyping(false);
+      return;
+    }
     void setTyping(true);
     typingTimeout.current = window.setTimeout(() => void setTyping(false), 1_200);
   };
@@ -99,14 +162,20 @@ export function Chat({ userId, initialCallWith }: { userId: string; initialCallW
     if (!text.trim() || sending) return;
     setSending(true);
     try {
-      await sendMessage(text); setText("");
+      await sendMessage(text);
+      setText("");
       if (typingTimeout.current) window.clearTimeout(typingTimeout.current);
       await setTyping(false);
-    } finally { setSending(false); }
+    } finally {
+      setSending(false);
+    }
   };
   const beginCall = async (mediaType: "audio" | "video") => {
     const target = targetUserId.trim();
-    if (!requestedRoomId) { setCallStatus("Enter another user's ID first."); return; }
+    if (!requestedRoomId) {
+      setCallStatus("Enter another user's ID first.");
+      return;
+    }
     setCallStatus(`Contacting ${target}...`);
     try {
       await realtime.joinRoom(requestedRoomId);
@@ -119,7 +188,9 @@ export function Chat({ userId, initialCallWith }: { userId: string; initialCallW
           setCallStatus(`${target} did not respond. Make sure they are connected to the lobby.`);
         }
       }, 15_000);
-    } catch (reason) { setCallStatus(reason instanceof Error ? reason.message : "Unable to start the call."); }
+    } catch (reason) {
+      setCallStatus(reason instanceof Error ? reason.message : "Unable to start the call.");
+    }
   };
   const runCallAction = (action: () => Promise<unknown>) => void action().catch(() => undefined);
   const visibleMessages = messages.filter((message) => !parseCallSignal(message.content));
@@ -127,55 +198,240 @@ export function Chat({ userId, initialCallWith }: { userId: string; initialCallW
   const groupCalls = calls.filter((call) => call.isGroup);
   const groupRoom = sfuRoom ? SFU_ROOM : GROUP_ROOM;
 
-  return <main>
-    <p className="eyebrow">Realtime Platform · v0.7 browser test</p>
-    <h1>Realtime test console</h1>
-    <p>Signed in locally as <strong>{userId}</strong> · {realtime.connected ? "connected" : "connecting..."} · {userIds.length} user{userIds.length === 1 ? "" : "s"} in the lobby</p>
-    <p className="presence">Lobby presence: {userIds.length ? userIds.join(", ") : "waiting for room presence..."}</p>
-    {chatError && <p className="error">Chat: {chatError.message}</p>}
-    <section aria-label="Lobby messages">
-      <h2>Lobby chat</h2>
-      {visibleMessages.length === 0 ? <p className="empty">Open another tab with a different user ID, then send a message.</p> : visibleMessages.map((message) => {
-        const deliveredTo = deliveries[message.id] ?? [];
-        return <article key={message.id}><strong>{message.senderId}</strong><span>{message.content}</span>{message.senderId === userId && <small>{deliveredTo.length ? `Delivered to ${deliveredTo.map((event) => event.recipientId).join(", ")}` : "Waiting for delivery..."}</small>}</article>;
-      })}
-    </section>
-    {typingUserIds.length > 0 && <p className="typing">{typingUserIds.join(", ")} {typingUserIds.length === 1 ? "is" : "are"} typing...</p>}
-    <form onSubmit={(event) => void submit(event)}><input value={text} onChange={(event) => updateText(event.target.value)} placeholder="Write a lobby message" aria-label="Message" /><button disabled={sending || !text.trim()}>{sending ? "Sending..." : "Send"}</button></form>
-    <section className="call-panel" aria-label="Call test">
-      <h2>One-to-one audio and video calls</h2>
-      <p className="empty">Enter a connected user’s ID and call them. The receiver is prepared automatically, then sees a real incoming call with Answer and Reject controls.</p>
-      <div className="call-controls"><input value={targetUserId} onChange={(event) => setTargetUserId(event.target.value)} placeholder="User ID to call (for example, bob)" aria-label="User ID to call" /><button type="button" onClick={() => void beginCall("audio")} disabled={!realtime.connected || !!pendingCall.current}>Audio call</button><button type="button" onClick={() => void beginCall("video")} disabled={!realtime.connected || !!pendingCall.current}>Video call</button></div>
-      {requestedRoomId && <p className="room-id">Private call room: <code>{requestedRoomId}</code></p>}
-      {callStatus && <p className="presence">{callStatus}</p>}
-      {callError && <p className="error">Call: {callError.message}</p>}
-      {oneToOneCalls.length === 0 ? <p className="empty">No active or ringing one-to-one calls.</p> : oneToOneCalls.map((call) => <article className="call" key={call.id}>
-        <strong>{call.state === "ringing" ? `Incoming or outgoing ${call.mediaType} call with ${call.remoteUserId}` : `${call.mediaType} call with ${call.remoteUserId}: ${call.state}`}</strong><small>Room: {call.roomId}</small>
-        {call.mediaType === "video" && call.localStream && <CallVideo stream={call.localStream} muted />}
-        {call.remoteStream && call.remoteStream.getVideoTracks().length > 0 && <CallVideo stream={call.remoteStream} />}
-        {call.remoteStream && <CallAudio stream={call.remoteStream} />}
-        <div className="call-actions">{call.state === "ringing" && !call.localStream && <><button type="button" onClick={() => runCallAction(() => call.mediaType === "video" ? answerVideoCall(call.id) : answerAudioCall(call.id))}>Answer</button><button className="secondary" type="button" onClick={() => runCallAction(() => rejectCall(call.id))}>Reject</button></>}{call.state === "active" && <button type="button" onClick={() => runCallAction(() => call.isScreenSharing ? stopScreenShare(call.id) : startScreenShare(call.id))}>{call.isScreenSharing ? "Stop sharing" : "Share screen"}</button>}<button className="danger" type="button" onClick={() => runCallAction(() => hangupCall(call.id))}>Hang up</button></div>
-      </article>)}
-    </section>
-    <section className="call-panel" aria-label="Group call test">
-      <h2>Group audio and video calls</h2>
-      <p className="empty">Group calls ring every other user currently in the selected room. Keep the SFU route off to test the full-mesh path in <code>lobby</code>, or enable it to route media through the SFU node in <code>sfu-lobby</code>.</p>
-      <div className="call-controls"><label className="sfu-toggle"><input type="checkbox" checked={sfuRoom} onChange={(event) => setSfuRoom(event.target.checked)} /> Route group calls through the SFU</label><button type="button" onClick={() => void startGroupCall(groupRoom, { video: false }).catch(() => undefined)} disabled={!realtime.connected}>Start group audio call</button><button type="button" onClick={() => void startGroupCall(groupRoom, { video: true }).catch(() => undefined)} disabled={!realtime.connected}>Start group video call</button></div>
-      {groupCalls.length === 0 ? <p className="empty">No active or ringing group calls.</p> : groupCalls.map((call) => <article className="call" key={call.id}>
-        <strong>{call.state === "ringing" && !call.localStream ? `Incoming group ${call.mediaType} call from ${call.callerId}` : `Group ${call.mediaType} call: ${call.state}`}</strong><small>Room: {call.roomId} · started by {call.callerId} · media path: <span className={call.mediaMode === "sfu" ? "badge" : "badge badge-mesh"}>{call.mediaMode === "sfu" ? "SFU" : "mesh"}</span>{call.isScreenSharing && <span className="badge">sharing screen</span>}</small>
-        <small>Participants: {call.participantIds.length ? call.participantIds.join(", ") : "waiting for participants..."}</small>
-        {call.mediaType === "video" && call.localStream && <CallVideo stream={call.localStream} muted />}
-        {Object.entries(call.remoteStreams ?? {}).map(([peerId, stream]) => <div key={peerId}>
-          <strong>{peerId}</strong>
-          {stream.getVideoTracks().length > 0 && <CallVideo stream={stream} />}
-          <CallAudio stream={stream} />
-        </div>)}
-        {Object.entries(call.screenStreams ?? {}).map(([peerId, stream]) => <div key={`screen-${peerId}`}>
-          <strong>{peerId} screen share</strong>
-          {stream.getVideoTracks().length > 0 && <CallVideo stream={stream} />}
-        </div>)}
-        <div className="call-actions">{call.state === "ringing" && !call.localStream && <><button type="button" onClick={() => runCallAction(() => joinCall(call.id))}>Join</button><button className="secondary" type="button" onClick={() => runCallAction(() => rejectCall(call.id))}>Reject</button></>}{call.state === "active" && call.localStream && <button type="button" onClick={() => runCallAction(() => call.isScreenSharing ? stopScreenShare(call.id) : startScreenShare(call.id))}>{call.isScreenSharing ? "Stop sharing" : "Share screen"}</button>}{call.localStream && <button className="danger" type="button" onClick={() => runCallAction(() => leaveCall(call.id))}>Leave</button>}</div>
-      </article>)}
-    </section>
-  </main>;
+  return (
+    <main>
+      <p className="eyebrow">Realtime Platform · v0.7 browser test</p>
+      <h1>Realtime test console</h1>
+      <p>
+        Signed in locally as <strong>{userId}</strong> · {realtime.connected ? "connected" : "connecting..."} ·{" "}
+        {userIds.length} user{userIds.length === 1 ? "" : "s"} in the lobby
+      </p>
+      <p className="presence">Lobby presence: {userIds.length ? userIds.join(", ") : "waiting for room presence..."}</p>
+      {chatError && <p className="error">Chat: {chatError.message}</p>}
+      <section aria-label="Lobby messages">
+        <h2>Lobby chat</h2>
+        {visibleMessages.length === 0 ? (
+          <p className="empty">Open another tab with a different user ID, then send a message.</p>
+        ) : (
+          visibleMessages.map((message) => {
+            const deliveredTo = deliveries[message.id] ?? [];
+            return (
+              <article key={message.id}>
+                <strong>{message.senderId}</strong>
+                <span>{message.content}</span>
+                {message.senderId === userId && (
+                  <small>
+                    {deliveredTo.length
+                      ? `Delivered to ${deliveredTo.map((event) => event.recipientId).join(", ")}`
+                      : "Waiting for delivery..."}
+                  </small>
+                )}
+              </article>
+            );
+          })
+        )}
+      </section>
+      {typingUserIds.length > 0 && (
+        <p className="typing">
+          {typingUserIds.join(", ")} {typingUserIds.length === 1 ? "is" : "are"} typing...
+        </p>
+      )}
+      <form onSubmit={(event) => void submit(event)}>
+        <input
+          value={text}
+          onChange={(event) => updateText(event.target.value)}
+          placeholder="Write a lobby message"
+          aria-label="Message"
+        />
+        <button disabled={sending || !text.trim()}>{sending ? "Sending..." : "Send"}</button>
+      </form>
+      <section className="call-panel" aria-label="Call test">
+        <h2>One-to-one audio and video calls</h2>
+        <p className="empty">
+          Enter a connected user’s ID and call them. The receiver is prepared automatically, then sees a real incoming
+          call with Answer and Reject controls.
+        </p>
+        <div className="call-controls">
+          <input
+            value={targetUserId}
+            onChange={(event) => setTargetUserId(event.target.value)}
+            placeholder="User ID to call (for example, bob)"
+            aria-label="User ID to call"
+          />
+          <button
+            type="button"
+            onClick={() => void beginCall("audio")}
+            disabled={!realtime.connected || !!pendingCall.current}
+          >
+            Audio call
+          </button>
+          <button
+            type="button"
+            onClick={() => void beginCall("video")}
+            disabled={!realtime.connected || !!pendingCall.current}
+          >
+            Video call
+          </button>
+        </div>
+        {requestedRoomId && (
+          <p className="room-id">
+            Private call room: <code>{requestedRoomId}</code>
+          </p>
+        )}
+        {callStatus && <p className="presence">{callStatus}</p>}
+        {callError && <p className="error">Call: {callError.message}</p>}
+        {oneToOneCalls.length === 0 ? (
+          <p className="empty">No active or ringing one-to-one calls.</p>
+        ) : (
+          oneToOneCalls.map((call) => (
+            <article className="call" key={call.id}>
+              <strong>
+                {call.state === "ringing"
+                  ? `Incoming or outgoing ${call.mediaType} call with ${call.remoteUserId}`
+                  : `${call.mediaType} call with ${call.remoteUserId}: ${call.state}`}
+              </strong>
+              <small>Room: {call.roomId}</small>
+              {call.mediaType === "video" && call.localStream && <CallVideo stream={call.localStream} muted />}
+              {call.remoteStream && call.remoteStream.getVideoTracks().length > 0 && (
+                <CallVideo stream={call.remoteStream} />
+              )}
+              {call.remoteStream && <CallAudio stream={call.remoteStream} />}
+              <div className="call-actions">
+                {call.state === "ringing" && !call.localStream && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        runCallAction(() =>
+                          call.mediaType === "video" ? answerVideoCall(call.id) : answerAudioCall(call.id),
+                        )
+                      }
+                    >
+                      Answer
+                    </button>
+                    <button
+                      className="secondary"
+                      type="button"
+                      onClick={() => runCallAction(() => rejectCall(call.id))}
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
+                {call.state === "active" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      runCallAction(() => (call.isScreenSharing ? stopScreenShare(call.id) : startScreenShare(call.id)))
+                    }
+                  >
+                    {call.isScreenSharing ? "Stop sharing" : "Share screen"}
+                  </button>
+                )}
+                <button className="danger" type="button" onClick={() => runCallAction(() => hangupCall(call.id))}>
+                  Hang up
+                </button>
+              </div>
+            </article>
+          ))
+        )}
+      </section>
+      <section className="call-panel" aria-label="Group call test">
+        <h2>Group audio and video calls</h2>
+        <p className="empty">
+          Group calls ring every other user currently in the selected room. Keep the SFU route off to test the full-mesh
+          path in <code>lobby</code>, or enable it to route media through the SFU node in <code>sfu-lobby</code>.
+        </p>
+        <div className="call-controls">
+          <label className="sfu-toggle">
+            <input type="checkbox" checked={sfuRoom} onChange={(event) => setSfuRoom(event.target.checked)} /> Route
+            group calls through the SFU
+          </label>
+          <button
+            type="button"
+            onClick={() => void startGroupCall(groupRoom, { video: false }).catch(() => undefined)}
+            disabled={!realtime.connected}
+          >
+            Start group audio call
+          </button>
+          <button
+            type="button"
+            onClick={() => void startGroupCall(groupRoom, { video: true }).catch(() => undefined)}
+            disabled={!realtime.connected}
+          >
+            Start group video call
+          </button>
+        </div>
+        {groupCalls.length === 0 ? (
+          <p className="empty">No active or ringing group calls.</p>
+        ) : (
+          groupCalls.map((call) => (
+            <article className="call" key={call.id}>
+              <strong>
+                {call.state === "ringing" && !call.localStream
+                  ? `Incoming group ${call.mediaType} call from ${call.callerId}`
+                  : `Group ${call.mediaType} call: ${call.state}`}
+              </strong>
+              <small>
+                Room: {call.roomId} · started by {call.callerId} · media path:{" "}
+                <span className={call.mediaMode === "sfu" ? "badge" : "badge badge-mesh"}>
+                  {call.mediaMode === "sfu" ? "SFU" : "mesh"}
+                </span>
+                {call.isScreenSharing && <span className="badge">sharing screen</span>}
+              </small>
+              <small>
+                Participants:{" "}
+                {call.participantIds.length ? call.participantIds.join(", ") : "waiting for participants..."}
+              </small>
+              {call.mediaType === "video" && call.localStream && <CallVideo stream={call.localStream} muted />}
+              {Object.entries(call.remoteStreams ?? {}).map(([peerId, stream]) => (
+                <div key={peerId}>
+                  <strong>{peerId}</strong>
+                  {stream.getVideoTracks().length > 0 && <CallVideo stream={stream} />}
+                  <CallAudio stream={stream} />
+                </div>
+              ))}
+              {Object.entries(call.screenStreams ?? {}).map(([peerId, stream]) => (
+                <div key={`screen-${peerId}`}>
+                  <strong>{peerId} screen share</strong>
+                  {stream.getVideoTracks().length > 0 && <CallVideo stream={stream} />}
+                </div>
+              ))}
+              <div className="call-actions">
+                {call.state === "ringing" && !call.localStream && (
+                  <>
+                    <button type="button" onClick={() => runCallAction(() => joinCall(call.id))}>
+                      Join
+                    </button>
+                    <button
+                      className="secondary"
+                      type="button"
+                      onClick={() => runCallAction(() => rejectCall(call.id))}
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
+                {call.state === "active" && call.localStream && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      runCallAction(() => (call.isScreenSharing ? stopScreenShare(call.id) : startScreenShare(call.id)))
+                    }
+                  >
+                    {call.isScreenSharing ? "Stop sharing" : "Share screen"}
+                  </button>
+                )}
+                {call.localStream && (
+                  <button className="danger" type="button" onClick={() => runCallAction(() => leaveCall(call.id))}>
+                    Leave
+                  </button>
+                )}
+              </div>
+            </article>
+          ))
+        )}
+      </section>
+    </main>
+  );
 }

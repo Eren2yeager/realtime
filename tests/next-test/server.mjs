@@ -10,9 +10,9 @@ const server = createNextRealtime(nextApp.getRequestHandler(), {
   port: Number(process.env.PORT ?? 3000),
   cors: { origin: "http://localhost:5173" },
   authenticate: (request) => ({
-    userId: new URL(request.url ?? "/", "http://localhost").searchParams.get("userId") ?? "anonymous"
+    userId: new URL(request.url ?? "/", "http://localhost").searchParams.get("userId") ?? "anonymous",
   }),
-  authorizeRoom: () => true
+  authorizeRoom: () => true,
 });
 
 await server.start();

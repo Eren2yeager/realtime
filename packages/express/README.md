@@ -25,7 +25,7 @@ app.get("/health", (_request, response) => response.json({ ok: true }));
 const server = createExpressRealtime(app, {
   port: 3001,
   authenticate: (request) => ({ userId: authenticateRequest(request) }),
-  authorizeRoom: ({ user, roomId }) => canAccessRoom(user.userId, roomId)
+  authorizeRoom: ({ user, roomId }) => canAccessRoom(user.userId, roomId),
 });
 
 await server.start();

@@ -5,11 +5,29 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
-  "scripts": { "build": "tsc -p tsconfig.json", "prepublishOnly": "bun run build" },
-  "keywords": ["realtime", "webrtc", "sfu", "mediasoup", "group-call", "media"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "realtime",
+    "webrtc",
+    "sfu",
+    "mediasoup",
+    "group-call",
+    "media"
+  ],
   "license": "MIT",
   "author": "Eren2yeager",
   "homepage": "https://github.com/Eren2yeager/realtime#readme",
@@ -20,11 +38,18 @@
   "bugs": {
     "url": "https://github.com/Eren2yeager/realtime/issues"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "dependencies": { "mediasoup": "^3.14.16" },
-  "devDependencies": { "@types/node": "^22.10.5", "typescript": "^5.7.3" }
+  "dependencies": {
+    "mediasoup": "^3.14.16"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.3"
+  }
 }

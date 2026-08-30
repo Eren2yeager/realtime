@@ -15,33 +15,48 @@ const server = createRealtimeServer({
     const url = new URL(request.url, "http://localhost");
     return { userId: url.searchParams.get("userId") ?? "anonymous" };
   },
-  authorizeRoom: () => true
+  authorizeRoom: () => true,
 });
 
-const connect = (userId) => new Promise((resolve, reject) => {
-  const socket = io(`http://localhost:${port}?userId=${userId}`, { transports: ["websocket"] });
-  const timer = setTimeout(() => reject(new Error(`Timed out connecting ${userId}`)), 5_000);
-  socket.on("connect", () => { clearTimeout(timer); resolve(socket); });
-  socket.on("connect_error", (error) => { clearTimeout(timer); reject(error); });
-});
-
-const request = (socket, event, input) => new Promise((resolve, reject) => {
-  socket.emit(event, input, (result) => {
-    if (result.ok) resolve(result.data);
-    else reject(new Error(`${result.error.code}: ${result.error.message}`));
+const connect = (userId) =>
+  new Promise((resolve, reject) => {
+    const socket = io(`http://localhost:${port}?userId=${userId}`, { transports: ["websocket"] });
+    const timer = setTimeout(() => reject(new Error(`Timed out connecting ${userId}`)), 5_000);
+    socket.on("connect", () => {
+      clearTimeout(timer);
+      resolve(socket);
+    });
+    socket.on("connect_error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
   });
-});
 
-const waitFor = (socket, event, matches = () => true, timeoutMs = 10_000) => new Promise((resolve, reject) => {
-  const timer = setTimeout(() => { cleanup(); reject(new Error(`Timed out waiting for ${event}`)); }, timeoutMs);
-  const handler = (...args) => {
-    if (!matches(...args)) return;
-    cleanup();
-    resolve(args.length === 1 ? args[0] : args);
-  };
-  const cleanup = () => { clearTimeout(timer); socket.off(event, handler); };
-  socket.on(event, handler);
-});
+const request = (socket, event, input) =>
+  new Promise((resolve, reject) => {
+    socket.emit(event, input, (result) => {
+      if (result.ok) resolve(result.data);
+      else reject(new Error(`${result.error.code}: ${result.error.message}`));
+    });
+  });
+
+const waitFor = (socket, event, matches = () => true, timeoutMs = 10_000) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${event}`));
+    }, timeoutMs);
+    const handler = (...args) => {
+      if (!matches(...args)) return;
+      cleanup();
+      resolve(args.length === 1 ? args[0] : args);
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.off(event, handler);
+    };
+    socket.on(event, handler);
+  });
 
 let exitCode = 0;
 try {
@@ -51,13 +66,10 @@ try {
   await sfu.createRoom("big-lobby");
   const alice = await connect("alice");
   const bob = await connect("bob");
-  await Promise.all([
-    request(alice, "protocol:handshake", "0.7"),
-    request(bob, "protocol:handshake", "0.7")
-  ]);
+  await Promise.all([request(alice, "protocol:handshake", "0.7"), request(bob, "protocol:handshake", "0.7")]);
   await Promise.all([
     request(alice, "room:join", { roomId: "big-lobby" }),
-    request(bob, "room:join", { roomId: "big-lobby" })
+    request(bob, "room:join", { roomId: "big-lobby" }),
   ]);
 
   // The SFU-mode group call advertises its media path on start and ring.
@@ -87,11 +99,15 @@ try {
   await request(alice, "sfu:connect-transport", {
     callId: started.callId,
     transportId: sendTransport.transportId,
-    dtlsParameters: { role: "client", fingerprints: [{ algorithm: "sha-256", value: "AA:BB:CC" }] }
+    dtlsParameters: { role: "client", fingerprints: [{ algorithm: "sha-256", value: "AA:BB:CC" }] },
   });
 
   // Producing notifies the other participant.
-  const bobSeesProducer = waitFor(bob, "sfu:producer-added", (event) => event.callId === started.callId && event.peerId === "alice");
+  const bobSeesProducer = waitFor(
+    bob,
+    "sfu:producer-added",
+    (event) => event.callId === started.callId && event.peerId === "alice",
+  );
   const produced = await request(alice, "sfu:produce", {
     callId: started.callId,
     transportId: sendTransport.transportId,
@@ -99,8 +115,8 @@ try {
     rtpParameters: {
       codecs: [{ mimeType: "audio/opus", payloadType: 111, clockRate: 48000, channels: 2 }],
       encodings: [{ ssrc: 12345 }],
-      rtcp: { cname: "smoke-test" }
-    }
+      rtcp: { cname: "smoke-test" },
+    },
   });
   assert.equal(produced.kind, "audio");
   const added = await bobSeesProducer;
@@ -111,7 +127,7 @@ try {
     callId: started.callId,
     transportId: recvTransport.transportId,
     producerId: produced.producerId,
-    rtpCapabilities: caps.rtpCapabilities
+    rtpCapabilities: caps.rtpCapabilities,
   });
   assert.equal(consumed.producerId, produced.producerId);
   assert.equal(consumed.kind, "audio");
@@ -119,7 +135,11 @@ try {
   await request(bob, "sfu:resume-consumer", { callId: started.callId, consumerId: consumed.consumerId });
 
   // Closing the producer notifies the other participant.
-  const bobSeesRemoved = waitFor(bob, "sfu:producer-removed", (event) => event.callId === started.callId && event.producerId === produced.producerId);
+  const bobSeesRemoved = waitFor(
+    bob,
+    "sfu:producer-removed",
+    (event) => event.callId === started.callId && event.producerId === produced.producerId,
+  );
   await request(alice, "sfu:close-producer", { callId: started.callId, producerId: produced.producerId });
   await bobSeesRemoved;
 
@@ -131,13 +151,10 @@ try {
   // Rooms excluded by useSfuForRoom stay on the mesh path and reject SFU actions.
   const carol = await connect("carol");
   const dave = await connect("dave");
-  await Promise.all([
-    request(carol, "protocol:handshake", "0.7"),
-    request(dave, "protocol:handshake", "0.7")
-  ]);
+  await Promise.all([request(carol, "protocol:handshake", "0.7"), request(dave, "protocol:handshake", "0.7")]);
   await Promise.all([
     request(carol, "room:join", { roomId: "small-lobby" }),
-    request(dave, "room:join", { roomId: "small-lobby" })
+    request(dave, "room:join", { roomId: "small-lobby" }),
   ]);
   const daveIncoming = waitFor(dave, "group:call:incoming", (event) => event.mediaMode === "mesh");
   const meshStarted = await request(carol, "call:start-group", { roomId: "small-lobby", mediaType: "audio" });
@@ -145,8 +162,13 @@ try {
   await daveIncoming;
   await assert.rejects(request(carol, "sfu:rtp-capabilities", { callId: meshStarted.callId }), /SFU_UNAVAILABLE/);
 
-  console.log("✅ v0.7 smoke test passed: SFU coordinator assigns rooms, relays transport/produce/consume, broadcasts producers, and cleans up.");
-  alice.disconnect(); bob.disconnect(); carol.disconnect(); dave.disconnect();
+  console.log(
+    "✅ v0.7 smoke test passed: SFU coordinator assigns rooms, relays transport/produce/consume, broadcasts producers, and cleans up.",
+  );
+  alice.disconnect();
+  bob.disconnect();
+  carol.disconnect();
+  dave.disconnect();
 } catch (error) {
   console.error(error);
   exitCode = 1;

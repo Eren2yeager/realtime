@@ -8,31 +8,36 @@ const server = createRealtimeServer({
     const url = new URL(request.url, "http://localhost");
     return { userId: url.searchParams.get("userId") ?? "anonymous" };
   },
-  authorizeRoom: () => true
+  authorizeRoom: () => true,
 });
 
-const waitFor = (client, event, matches = () => true) => new Promise((resolve, reject) => {
-  const timeout = setTimeout(() => {
-    unsubscribe();
-    reject(new Error(`Timed out waiting for ${event}`));
-  }, 5_000);
-  const unsubscribe = client.on(event, (payload) => {
-    if (!matches(payload)) return;
-    clearTimeout(timeout);
-    unsubscribe();
-    resolve(payload);
-  });
-});
-
-const mustNotReceive = (client, event, matches = () => true) => new Promise((resolve, reject) => {
-  const unsubscribe = client.on(event, (payload) => {
-    if (matches(payload)) {
+const waitFor = (client, event, matches = () => true) =>
+  new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
       unsubscribe();
-      reject(new Error(`Unexpected ${event} event received`));
-    }
+      reject(new Error(`Timed out waiting for ${event}`));
+    }, 5_000);
+    const unsubscribe = client.on(event, (payload) => {
+      if (!matches(payload)) return;
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve(payload);
+    });
   });
-  setTimeout(() => { unsubscribe(); resolve(); }, 300);
-});
+
+const mustNotReceive = (client, event, matches = () => true) =>
+  new Promise((resolve, reject) => {
+    const unsubscribe = client.on(event, (payload) => {
+      if (matches(payload)) {
+        unsubscribe();
+        reject(new Error(`Unexpected ${event} event received`));
+      }
+    });
+    setTimeout(() => {
+      unsubscribe();
+      resolve();
+    }, 300);
+  });
 
 let exitCode = 0;
 try {
@@ -57,30 +62,58 @@ try {
   assert.deepEqual(new Set((await bobPresence).userIds), new Set(["alice", "bob"]));
   await aliceSeesBob;
 
-  const typingStarted = waitFor(alice, "typing:start", (event) => event.roomId === "test-room" && event.userId === "bob");
+  const typingStarted = waitFor(
+    alice,
+    "typing:start",
+    (event) => event.roomId === "test-room" && event.userId === "bob",
+  );
   await bob.setTyping("test-room", true);
   await typingStarted;
-  const typingStopped = waitFor(alice, "typing:stop", (event) => event.roomId === "test-room" && event.userId === "bob");
+  const typingStopped = waitFor(
+    alice,
+    "typing:stop",
+    (event) => event.roomId === "test-room" && event.userId === "bob",
+  );
   await bob.setTyping("test-room", false);
   await typingStopped;
 
-  const bobSeesAliceTyping = waitFor(bob, "typing:start", (event) => event.roomId === "test-room" && event.userId === "alice");
-  const aliceOtherTabDoesNotSeeOwnTyping = mustNotReceive(aliceSecondTab, "typing:start", (event) => event.roomId === "test-room" && event.userId === "alice");
+  const bobSeesAliceTyping = waitFor(
+    bob,
+    "typing:start",
+    (event) => event.roomId === "test-room" && event.userId === "alice",
+  );
+  const aliceOtherTabDoesNotSeeOwnTyping = mustNotReceive(
+    aliceSecondTab,
+    "typing:start",
+    (event) => event.roomId === "test-room" && event.userId === "alice",
+  );
   await alice.setTyping("test-room", true);
   await Promise.all([bobSeesAliceTyping, aliceOtherTabDoesNotSeeOwnTyping]);
   await alice.setTyping("test-room", false);
 
   const received = waitFor(bob, "message", (message) => message.roomId === "test-room");
-  const delivered = waitFor(alice, "message:delivered", (event) => event.roomId === "test-room" && event.recipientId === "bob");
+  const delivered = waitFor(
+    alice,
+    "message:delivered",
+    (event) => event.roomId === "test-room" && event.recipientId === "bob",
+  );
   const message = await alice.sendMessage("test-room", "Hello from v0.2!");
   assert.equal((await received).id, message.id);
   assert.equal((await delivered).messageId, message.id);
 
-  const bobSeesOffline = waitFor(bob, "user:offline", (event) => event.roomId === "test-room" && event.userId === "alice");
+  const bobSeesOffline = waitFor(
+    bob,
+    "user:offline",
+    (event) => event.roomId === "test-room" && event.userId === "alice",
+  );
   alice.disconnect();
   aliceSecondTab.disconnect();
   await bobSeesOffline;
-  const bobSeesAliceAgain = waitFor(bob, "user:online", (event) => event.roomId === "test-room" && event.userId === "alice");
+  const bobSeesAliceAgain = waitFor(
+    bob,
+    "user:online",
+    (event) => event.roomId === "test-room" && event.userId === "alice",
+  );
   const aliceReconnected = waitFor(alice, "reconnected");
   alice.connect();
   await Promise.all([aliceReconnected, bobSeesAliceAgain]);

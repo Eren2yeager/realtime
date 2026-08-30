@@ -3,6 +3,7 @@
 ## 1. API Design Principles
 
 The public API should be:
+
 - Small
 - Predictable
 - Framework-independent
@@ -27,13 +28,7 @@ sendMessage("Hello!");
 ### Calling
 
 ```js
-const {
-  calls,
-  startAudioCall,
-  answerAudioCall,
-  rejectCall,
-  hangupCall
-} = useCall();
+const { calls, startAudioCall, answerAudioCall, rejectCall, hangupCall } = useCall();
 
 startAudioCall("private:alice:bob");
 ```
@@ -44,26 +39,17 @@ Each call entry exposes its lifecycle state and local/remote `MediaStream`
 values when available.
 
 ```js
-const {
-  calls,
-  startGroupCall,
-  joinCall,
-  leaveCall,
-  hangupCall
-} = useCall();
+const { calls, startGroupCall, joinCall, leaveCall, hangupCall } = useCall();
 
 startGroupCall("lobby", { video: true }); // ring every other member of the room
-joinCall(call.id);                        // accept an incoming group call
-leaveCall(call.id);                       // leave without ending the call
+joinCall(call.id); // accept an incoming group call
+leaveCall(call.id); // leave without ending the call
 ```
 
 ### Screen Sharing
 
 ```js
-const {
-  startScreenShare,
-  stopScreenShare
-} = useScreenShare();
+const { startScreenShare, stopScreenShare } = useScreenShare();
 
 startScreenShare();
 ```
@@ -264,7 +250,7 @@ participant joins or leaves independently while the call is active, and the
 call ends when the last participant leaves. The server relays signaling only;
 media stays peer-to-peer over a full-mesh topology.
 
-### Version 0.7 — In Progress
+### Version 0.7 — complete
 
 Add:
 
@@ -302,7 +288,7 @@ and browser client. Package responsibilities split as follows:
 This keeps `@realtimesdk/server` free of the media router's heavy native
 dependencies, allows the SFU to be provisioned and scaled independently, and
 leaves room for running multiple SFU nodes behind a single signaling server.
- 
+
 ### Later
 
 Potential features:
@@ -315,22 +301,26 @@ Potential features:
 - Analytics hooks
 - CLI initialization
 
-
 ## 7. Important Engineering Risks
 
 ### WebRTC complexity
+
 Peer connection failures, NAT traversal, browser differences, and TURN requirements will require significant testing.
 
 ### Scaling
+
 A single realtime server is easy; multiple instances require shared state and coordination.
 
 ### Framework compatibility
+
 Next.js server/runtime differences need careful handling.
 
 ### API stability
+
 The package should avoid exposing low-level Socket.IO/WebRTC details unless necessary.
 
 ### Security
+
 Authentication, authorization, room access, origin validation, abuse prevention, and rate limiting must be considered from the beginning.
 
 ## 8. First Technical Milestone

@@ -5,11 +5,30 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
-  "scripts": { "build": "tsc -p tsconfig.json", "prepublishOnly": "bun run build" },
-  "keywords": ["realtime", "websocket", "socket.io-client", "chat", "webrtc", "client", "sdk"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "realtime",
+    "websocket",
+    "socket.io-client",
+    "chat",
+    "webrtc",
+    "client",
+    "sdk"
+  ],
   "license": "MIT",
   "author": "Eren2yeager",
   "homepage": "https://github.com/Eren2yeager/realtime#readme",
@@ -20,11 +39,19 @@
   "bugs": {
     "url": "https://github.com/Eren2yeager/realtime/issues"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "dependencies": { "@realtimesdk/core": "^0.7.0", "mediasoup-client": "^3.7.0", "socket.io-client": "^4.8.1" },
-  "devDependencies": { "typescript": "^5.7.3" }
+  "dependencies": {
+    "@realtimesdk/core": "^0.7.0",
+    "mediasoup-client": "^3.7.0",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
 }
