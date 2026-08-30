@@ -40,7 +40,7 @@
     "format:check": "prettier --check .",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:publish": "bun run build && bun run publish:all",
+    "changeset:publish": "bun run build && bun scripts/publish-packages.mjs",
     "publish:all": "bun publish --cwd packages/core --access public --tag latest && bun publish --cwd packages/server --access public --tag latest && bun publish --cwd packages/sfu --access public --tag latest && bun publish --cwd packages/client --access public --tag latest && bun publish --cwd packages/react --access public --tag latest && bun publish --cwd packages/express --access public --tag latest && bun publish --cwd packages/next --access public --tag latest"
   },
   "devDependencies": {
