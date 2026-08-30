@@ -31,6 +31,7 @@
     "test:react": "bun run --cwd tests/react-test dev",
     "test:express": "node tests/react-test/server.mjs",
     "test:next": "bun tests/next-test/server.mjs",
+    "test:unit": "bun test",
     "test:smoke": "bun tests/smoke/v0.1-smoke-test.mjs && bun tests/smoke/v0.2-smoke-test.mjs && bun tests/smoke/v0.3-smoke-test.mjs && bun tests/smoke/v0.4-smoke-test.mjs && bun tests/smoke/v0.5-express-smoke-test.mjs && bun tests/smoke/v0.5-next-smoke-test.mjs && bun tests/smoke/v0.6-group-call-smoke-test.mjs && node tests/smoke/v0.7-sfu-smoke-test.mjs && node tests/smoke/v0.7-client-sfu-smoke-test.mjs",
     "test:smoke:public": "bun install --cwd tests/smoke/public-registry && node tests/smoke/public-registry/public-registry-smoke-test.mjs",
     "lint": "eslint .",

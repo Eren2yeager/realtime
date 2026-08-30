@@ -199,7 +199,13 @@ export function App() {
 
 ## Testing
 
-Two test layers:
+Three test layers:
+
+- **Unit tests** — fast, in-memory tests for protocol helpers and server logic (authorization, presence, messaging, and the one-to-one call state machine). No network or external services required.
+
+  ```bash
+  bun run test:unit
+  ```
 
 - **In-workspace smoke tests** — run against the local `dist/` after `bun run build`. Useful as a regression check after editing sources.
 
